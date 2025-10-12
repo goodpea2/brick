@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>P5js Brick Breaker</title>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="index.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/stackoverflow-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.22.0",
+    "highlight.js": "https://aistudiocdn.com/highlight.js@^11.11.1",
+    "lit/": "https://aistudiocdn.com/lit@^3.3.1/",
+    "lit": "https://aistudiocdn.com/lit@^3.3.1",
+    "marked-highlight": "https://aistudiocdn.com/marked-highlight@^2.2.2",
+    "marked": "https://aistudiocdn.com/marked@^16.3.0"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="root">
+    <div id="game-ui-overlay">
+        <div class="top-left-stats">
+            <div class="stat-line main-stats">
+                <span class="stat-item">Level: <span id="level-stat" class="level-color">1</span></span>
+                <span class="stat-item">Score: <span id="score-stat" class="score-color">0</span></span>
+                <span class="stat-item">Balls: <span id="balls-stat" class="balls-color">5</span></span>
+            </div>
+            <div class="stat-line seed-stat">
+                Seed: <span id="seed-stat">...</span>
+            </div>
+        </div>
+        <div class="coin-bank">
+            <span id="coin-stat">0</span> 🪙
+        </div>
+    </div>
+    <div class="playground">
+      <!-- Main Content: Canvas and Toolbar -->
+      <div class="main-container">
+        <div id="canvas-container"></div>
+         <div id="ballSelector" class="hidden">
+            <h4>Select Ball</h4>
+            <button class="ball-select-btn active" data-ball-type="explosive">
+                <div class="ball-visual"></div>
+                <div class="tooltip">Explosive Ball: Use power to create a damaging explosion. (2 uses)</div>
+            </button>
+            <button class="ball-select-btn" data-ball-type="piercing">
+                 <div class="ball-visual"></div>
+                 <div class="tooltip">Piercing Ball: Power up to pierce through bricks. (2 uses)</div>
+            </button>
+            <button class="ball-select-btn" data-ball-type="split">
+                 <div class="ball-visual"></div>
+                 <div class="tooltip">Split Ball: Power up to split into 3. Main ball takes damage on wall hits. (1 use)</div>
+            </button>
+            <button class="ball-select-btn" data-ball-type="brick">
+                 <div class="ball-visual"></div>
+                 <div class="tooltip">Brick Ball: Power up to summon a ring of bricks. (1 use)</div>
+            </button>
+            <button class="ball-select-btn hidden" data-ball-type="giant">
+                <div class="ball-visual"></div>
+                <span class="ball-count-badge hidden">0</span>
+                <div class="tooltip">Giant Ball: One-shot ball that pierces all bricks but dies on wall contact. (Consumable)</div>
+            </button>
+        </div>
+        <div class="toolbar">
+           <button id="levelSettingsButton">Level Settings</button>
+           <button id="prevLevelBtn">Prev Level</button>
+           <button id="nextLevelBtn">Next Level</button>
+           <button id="speedToggleBtn">Speed Up</button>
+           <button id="pauseResumeBtn">Pause</button>
+           <button id="clear">Reset</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Level Generation Popup Panel -->
+  <div id="levelSettingsModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close-button">&times;</span>
+      <h2>Level Generation Settings</h2>
+      <div class="settings-columns">
+        <div class="settings-column">
+          <h4>General</h4>
+           <div class="form-group">
+                <label for="seedInput">Seed:</label>
+                <input type="text" id="seedInput" placeholder="random">
+            </div>
+           <div class="form-group">
+                <label for="levelPattern">Level Pattern:</label>
+                <select id="levelPattern">
+                  <option value="scatter">Scatter</option>
+                  <option value="formulaic" selected>Formulaic</option>
+                  <option value="solid">Solid</option>
+                  <option value="checkerboard">Checkerboard</option>
+                  <option value="spiral">Spiral</option>
+                </select>
+            </div>
+          <div class="form-group">
+            <label for="startingBalls">Starting Balls:</label>
+            <input type="number" id="startingBalls" value="5" min="1" max="10">
+          </div>
+          <div class="form-group">
+            <label for="ballSpeed">Ball Speed:</label>
+            <input type="range" id="ballSpeed" min="0.1" max="2" step="0.1" value="0.5">
+            <span id="ballSpeedValue">0.5</span>
+          </div>
+          <hr>
+          <h4>Brick Settings</h4>
+          <div class="form-group">
+            <label for="goalBricks">Goal Bricks:</label>
+            <input type="number" id="goalBricks" value="3" min="1" max="50">
+          </div>
+          <div class="form-group">
+            <label for="goalBrickCountIncrement">Goal Bricks/Lvl:</label>
+            <input type="number" id="goalBrickCountIncrement" value="0.35" min="0" step="0.01">
+          </div>
+          <div class="form-group">
+            <label for="extraBallBricks">+1 Ball Bricks:</label>
+            <input type="number" id="extraBallBricks" value="3" min="0" max="20">
+          </div>
+           <div class="form-group">
+            <label for="explosiveBrickChance">Explosive Chance:</label>
+            <input type="range" id="explosiveBrickChance" min="0" max="1" step="0.01" value="0.05">
+            <span id="explosiveBrickChanceValue">0.05</span>
+          </div>
+           <hr>
+           <h4>Bonus Level</h4>
+           <div class="form-group">
+            <label for="bonusLevelInterval">Bonus Interval:</label>
+            <input type="number" id="bonusLevelInterval" value="5" min="2">
+          </div>
+          <div class="form-group">
+            <label for="minCoinBonusMultiplier">Min Multiplier:</label>
+            <input type="number" id="minCoinBonusMultiplier" value="7" min="1">
+          </div>
+           <div class="form-group">
+            <label for="maxCoinBonusMultiplier">Max Multiplier:</label>
+            <input type="number" id="maxCoinBonusMultiplier" value="10" min="1">
+          </div>
+        </div>
+        <div class="settings-column">
+          <h4>Difficulty Progression</h4>
+          <div class="form-group">
+            <label for="brickCount">Starting Bricks:</label>
+            <input type="number" id="brickCount" value="15" min="1" max="300">
+          </div>
+          <div class="form-group">
+            <label for="brickCountIncrement">Bricks per Level:</label>
+            <input type="number" id="brickCountIncrement" value="8" min="0" max="50">
+          </div>
+            <div class="form-group">
+            <label for="maxBrickCount">Max Bricks:</label>
+            <input type="number" id="maxBrickCount" value="100" min="10" max="500">
+          </div>
+           <div class="form-group">
+            <label for="fewBrickLayoutChance">Few Brick Chance:</label>
+            <input type="range" id="fewBrickLayoutChance" min="0" max="1" step="0.01" value="0.15">
+            <span id="fewBrickLayoutChanceValue">0.15</span>
+          </div>
+          <div class="form-group">
+            <label for="startingBrickHp">Starting HP Pool:</label>
+            <input type="number" id="startingBrickHp" value="100" min="1">
+          </div>
+           <div class="form-group">
+            <label for="brickHpIncrement">HP Pool per Level:</label>
+            <input type="number" id="brickHpIncrement" value="80" min="0">
+          </div>
+          <div class="form-group">
+            <label for="brickHpIncrementMultiplier">HP Multiplier/Lvl:</label>
+            <input type="number" id="brickHpIncrementMultiplier" value="1.05" min="1" step="0.01">
+          </div>
+          <hr>
+          <h4>Brick Overlays</h4>
+           <div class="form-group">
+            <label for="builderBrickChance">Builder Chance:</label>
+            <input type="number" id="builderBrickChance" min="0" max="1" step="0.01" value="0.03">
+          </div>
+           <div class="form-group">
+            <label for="healerBrickChance">Healer Chance:</label>
+            <input type="number" id="healerBrickChance" min="0" max="1" step="0.01" value="0.03">
+          </div>
+          <hr>
+          <h4>Coin Settings</h4>
+           <div class="form-group">
+            <label for="startingCoin">Starting Coin Pool:</label>
+            <input type="number" id="startingCoin" value="5" min="0">
+          </div>
+           <div class="form-group">
+            <label for="coinIncrement">Coin Pool per Level:</label>
+            <input type="number" id="coinIncrement" value="5" min="0">
+          </div>
+            <div class="form-group">
+            <label for="maxCoin">Max Coin Pool:</label>
+            <input type="number"id="maxCoin" value="300" min="0">
+          </div>
+        </div>
+      </div>
+      <button id="generateLevelButton" class="modal-action-button">Generate New Level</button>
+    </div>
+  </div>
+  
+  <!-- Shop Popup Panel -->
+  <div id="shopModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close-button">&times;</span>
+      <div class="shop-header">
+          <div class="shop-header-left">
+              <button id="shopBalancingButton" class="shop-utility-btn">⚙️</button>
+              <button id="cheatCoinBtn" class="shop-utility-btn">🪙+</button>
+          </div>
+          <h2>Shop</h2>
+          <div class="shop-header-right">
+              <span id="shopCoinCount">0</span> 🪙
+          </div>
+      </div>
+      
+      <div id="buyBallCard" class="buy-ball-card">
+          <h4>Extra Ball</h4>
+          <p>Get one more ball for the next round.</p>
+          <button id="buyBallButton" class="upgrade-cost-button"></button>
+      </div>
+
+      <hr>
+      <h4>Permanent Upgrades</h4>
+      <div id="upgradesGrid" class="upgrades-grid">
+         <!-- Upgrade cards will be dynamically inserted here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Shop Balancing Popup Panel -->
+  <div id="shopBalancingModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close-button">&times;</span>
+      <h2>Shop Balancing Settings</h2>
+      <div class="settings-columns">
+        <div class="settings-column">
+            <h4>Ball Purchase</h4>
+            <div class="form-group"><label>Base Cost:</label><input type="number" id="ballFirstCost" value="10"></div>
+            <div class="form-group"><label>Cost Increment:</label><input type="number" id="ballCostIncrement" value="5"></div>
+            <hr>
+            <h4>Upgrade Costs</h4>
+            <div class="form-group"><label>Cost Rate:</label><input type="number" id="costIncrementRate" value="1.5" step="0.01"></div>
+            <div class="form-group"><label>Ball HP Cost:</label><input type="number" id="ballHpBaseCost" value="50"></div>
+            <div class="form-group"><label>Aim Length Cost:</label><input type="number" id="aimLengthBaseCost" value="30"></div>
+            <div class="form-group"><label>Explosion Dmg Cost:</label><input type="number" id="powerExplosionDamageBaseCost" value="50"></div>
+            <div class="form-group"><label>Piercing Dmg Cost:</label><input type="number" id="piercingBonusDamageBaseCost" value="50"></div>
+            <div class="form-group"><label>Split Dmg Cost:</label><input type="number" id="splitDamageBaseCost" value="80"></div>
+            <div class="form-group"><label>Brick Coin % Cost:</label><input type="number" id="brickCoinChanceBaseCost" value="50"></div>
+        </div>
+        <div class="settings-column">
+            <h4>Upgrade Values</h4>
+            <div class="form-group"><label>Ball HP Start:</label><input type="number" id="ballHpBaseValue" value="100"></div>
+            <div class="form-group"><label>Ball HP / Lvl:</label><input type="number" id="ballHpValue" value="20"></div>
+            <div class="form-group"><label>Aim Len Start:</label><input type="number" id="aimLengthBaseValue" value="2"></div>
+            <div class="form-group"><label>Aim Length / Lvl:</label><input type="number" id="aimLengthValue" value="1"></div>
+            <div class="form-group"><label>Explosion Dmg Start:</label><input type="number" id="powerExplosionDamageBaseValue" value="30"></div>
+            <div class="form-group"><label>Explosion Dmg / Lvl:</label><input type="number" id="powerExplosionDamageValue" value="10"></div>
+            <div class="form-group"><label>Piercing Dmg Start:</label><input type="number" id="piercingBonusDamageBaseValue" value="0"></div>
+            <div class="form-group"><label>Piercing Dmg / Lvl:</label><input type="number" id="piercingBonusDamageValue" value="2"></div>
+            <div class="form-group"><label>Split Dmg Start:</label><input type="number" id="splitDamageBaseValue" value="6"></div>
+            <div class="form-group"><label>Split Dmg / Lvl:</label><input type="number" id="splitDamageValue" value="2"></div>
+            <div class="form-group"><label>Brick Coin % Start:</label><input type="number" id="brickCoinChanceBaseValue" value="10"></div>
+            <div class="form-group"><label>Brick Coin % / Lvl:</label><input type="number" id="brickCoinChanceValue" value="3"></div>
+        </div>
+      </div>
+      <button id="applyShopSettingsButton" class="modal-action-button">Apply & Close</button>
+    </div>
+  </div>
+
+  <script type="module" src="index.js"></script>
+</body>
+</html>
