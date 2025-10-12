@@ -609,6 +609,25 @@ const sketch = (p) => {
             isAiming = false; 
         } 
     };
+
+    // --- Touch Controls ---
+    p.touchStarted = () => {
+        if (p.touches.length > 0) {
+            p.mousePressed();
+            return false; // prevent default browser behavior (e.g., scrolling)
+        }
+    };
+    p.touchMoved = () => {
+        if (p.touches.length > 0) {
+            p.mouseDragged();
+            return false;
+        }
+    };
+    p.touchEnded = () => {
+        p.mouseReleased();
+        return false;
+    };
+    
     function previewTrajectory(sP, sV) { 
         let pos = sP.copy(), vel = sV.copy(); p.stroke(255, 255, 0, 100); p.strokeWeight(1.5); p.noFill(); p.beginShape(); 
         for (let i = 0; i < upgradeableStats.aimLength * 3; i++) { 
