@@ -13,17 +13,18 @@
       padding: 0;
     }
 
-    html, body {
-      height: 100%;
-    }
-    
     html {
+      height: 100%;
+      display: flex; /* CRITICAL FIX: Establishes the flexbox context for the body */
       font-family: 'Google Sans Text', 'Google Sans';
     }
 
     body {
+      height: 100%;
       display: flex;
       flex-direction: column;
+      flex: 1; /* CRITICAL FIX: Ensures the body fills the full height of the html element */
+      margin: 0;
       overflow: hidden;
 
       --color-bg: light-dark(#fff, #000);
