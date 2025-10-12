@@ -611,20 +611,39 @@ const sketch = (p) => {
     };
 
     // --- Touch Controls ---
-    p.touchStarted = () => {
+    p.touchStarted = (event) => {
+        // If the touch event target is not the canvas, let the browser handle it for UI elements.
+        if (event.target !== p.canvas) {
+            return;
+        }
         if (p.touches.length > 0) {
             p.mousePressed();
-            return false; // prevent default browser behavior (e.g., scrolling)
         }
+        // Prevent default browser behavior (like scrolling) only for direct canvas interactions.
+        return false; 
     };
-    p.touchMoved = () => {
+    
+    p.touchMoved = (event) => {
+        // If the touch event target is not the canvas, do nothing.
+        if (event.target !== p.canvas) {
+            return;
+        }
         if (p.touches.length > 0) {
             p.mouseDragged();
+        }
+        // Prevent scrolling while aiming is active.
+        if (isAiming) {
             return false;
         }
     };
-    p.touchEnded = () => {
+    
+    p.touchEnded = (event) => {
+        // If the touch event target is not the canvas, let the browser handle it.
+        if (event.target !== p.canvas) {
+            return;
+        }
         p.mouseReleased();
+        // Prevent any lingering side-effects like zoom on some browsers after a game action.
         return false;
     };
     

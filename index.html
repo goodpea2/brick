@@ -13,17 +13,17 @@
       padding: 0;
     }
 
-    html {
+    html, body {
       height: 100%;
-      display: flex;
+    }
+    
+    html {
       font-family: 'Google Sans Text', 'Google Sans';
     }
 
     body {
       display: flex;
       flex-direction: column;
-      flex: 1;
-      margin: 0;
       overflow: hidden;
 
       --color-bg: light-dark(#fff, #000);
@@ -44,7 +44,18 @@
       --color-text2: light-dark(#333, #f0f0f0);
       --color-bg3: light-dark(#dadada, #4b4b4b);
       --color-text3: light-dark(#333, #f0f0f0);
+      
+      background-color: var(--color-bg);
+      color: var(--color-text);
+      
+      --code-bg: #222;
+      --code-text: #ccc;
 
+      --code-editor-bg: var(--color-bg2);
+      --code-editor-text: var(--color-text2);
+
+      --color-error-bg: #ff3326;
+      --color-error-text: #000;
     }
 
     ::-webkit-scrollbar {
@@ -65,43 +76,28 @@
       background: transparent;
     }
 
-
-    body {
-      background-color: var(--color-bg);
-      color: var(--color-text);
-
-      --code-bg: #222;
-      --code-text: #ccc;
-
-      --code-editor-bg: var(--color-bg2);
-      --code-editor-text: var(--color-text2);
-
-      --color-error-bg: #ff3326;
-      --color-error-text: #000;
-    }
-
-    .playground {
-      border-top: 1px solid var(--color-sidebar-border);
-    }
-
     .hidden {
       display: none!important;
     }
 
-    #root,
-    .playground {
-      height: 100vh;
-      overflow: hidden;
+    #root {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
     }
 
     .playground {
       display: flex;
       flex-direction: row;
       flex: 1;
+      min-height: 0;
+      border-top: 1px solid var(--color-sidebar-border);
     }
 
     .toolbar {
       height: 80px;
+      flex-shrink: 0; /* Prevent toolbar from getting squished */
       display: flex;
       flex-direction: row;
       justify-content: center;
@@ -141,15 +137,9 @@
       flex: 1;
       flex-direction: column;
       position: relative;
+      min-height: 0;
     }
-
-    main {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex: 1;
-    }
-
+    
     #canvas-container {
         flex: 1;
         display: flex;
@@ -157,6 +147,7 @@
         justify-content: center;
         overflow: hidden;
         position: relative;
+        min-height: 0;
     }
 
     #canvas-container > canvas {
