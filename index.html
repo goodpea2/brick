@@ -4,6 +4,7 @@
   <title>P5js Brick Breaker</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inconsolata:wght@200..900&display=swap');
 
@@ -15,36 +16,35 @@
 
     html {
       height: 100%;
-      display: flex; /* CRITICAL FIX: Establishes the flexbox context for the body */
-      font-family: 'Google Sans Text', 'Google Sans';
+      display: flex;
+      font-family: 'Inconsolata', monospace;
     }
 
     body {
-      height: 100%;
       display: flex;
       flex-direction: column;
-      flex: 1; /* CRITICAL FIX: Ensures the body fills the full height of the html element */
+      flex: 1;
       margin: 0;
       overflow: hidden;
 
-      --color-bg: light-dark(#fff, #000);
-      --color-text: light-dark(#000, #fff);
+      --color-bg: #1a1a1a;
+      --color-text: #f0f0f0;
 
-      --color-inv-bg: light-dark(#000, #fff);
-      --color-inv-text: light-dark(#fff, #000);
-      --color-inv-bg2: light-dark(#333, #aaa);
-      --color-inv-text2: light-dark(#ccc, #222);
+      --color-inv-bg: #f0f0f0;
+      --color-inv-text: #1a1a1a;
+      --color-inv-bg2: #aaa;
+      --color-inv-text2: #222;
 
-      --color-accent: light-dark(#000, #fff);
-      --color-accent2: light-dark(#444, #ccc);
-      --color-accent-disabled: light-dark(#aaa, #aaa);
-      --color-accent-text: light-dark(#fff, #000);
-      --color-sidebar-border: light-dark(#ddd, #333);
+      --color-accent: #f0f0f0;
+      --color-accent2: #ccc;
+      --color-accent-disabled: #555;
+      --color-accent-text: #1a1a1a;
+      --color-sidebar-border: #333;
 
-      --color-bg2: light-dark(#f0f0f0, #333);
-      --color-text2: light-dark(#333, #f0f0f0);
-      --color-bg3: light-dark(#dadada, #4b4b4b);
-      --color-text3: light-dark(#333, #f0f0f0);
+      --color-bg2: #282828;
+      --color-text2: #f0f0f0;
+      --color-bg3: #4b4b4b;
+      --color-text3: #f0f0f0;
       
       background-color: var(--color-bg);
       color: var(--color-text);
@@ -65,7 +65,7 @@
     }
 
     ::-webkit-scrollbar-thumb {
-      background: light-dark(rgba(170, 170, 170, 0.7), rgba(130, 130, 130, 0.7));
+      background: rgba(130, 130, 130, 0.7);
       border-radius: 6px;
     }
 
@@ -76,16 +76,16 @@
     ::-webkit-scrollbar-corner {
       background: transparent;
     }
-
+    
     .hidden {
       display: none!important;
     }
-
+    
     #root {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      min-height: 0;
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-height: 0;
     }
 
     .playground {
@@ -95,10 +95,34 @@
       min-height: 0;
       border-top: 1px solid var(--color-sidebar-border);
     }
+    
+    .main-container {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      position: relative;
+      min-height: 0;
+    }
+
+    #canvas-container {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        position: relative;
+        min-height: 0;
+    }
+
+    #canvas-container > canvas {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
 
     .toolbar {
       height: 80px;
-      flex-shrink: 0; /* Prevent toolbar from getting squished */
+      flex-shrink: 0;
       display: flex;
       flex-direction: row;
       justify-content: center;
@@ -132,31 +156,7 @@
         background-color: #007bff;
         color: white;
     }
-
-    .main-container {
-      display: flex;
-      flex: 1;
-      flex-direction: column;
-      position: relative;
-      min-height: 0;
-    }
     
-    #canvas-container {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        position: relative;
-        min-height: 0;
-    }
-
-    #canvas-container > canvas {
-      max-width: 100%;
-      max-height: 100%;
-      object-fit: contain;
-    }
-
     /* Modal Styles */
     .modal {
       position: fixed;
@@ -672,22 +672,6 @@
       .coin-bank { font-size: 1.2em; }
     }
   </style>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/stackoverflow-dark.min.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<script type="importmap">
-{
-  "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.22.0",
-    "highlight.js": "https://aistudiocdn.com/highlight.js@^11.11.1",
-    "lit/": "https://aistudiocdn.com/lit@^3.3.1/",
-    "lit": "https://aistudiocdn.com/lit@^3.3.1",
-    "marked-highlight": "https://aistudiocdn.com/marked-highlight@^2.2.2",
-    "marked": "https://aistudiocdn.com/marked@^16.3.0"
-  }
-}
-</script>
 </head>
 <body>
   <div id="root">
