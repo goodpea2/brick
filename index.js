@@ -15,6 +15,7 @@ const prevLevelBtn = document.getElementById('prevLevelBtn');
 const nextLevelBtn = document.getElementById('nextLevelBtn');
 const clearBtn = document.getElementById('clear');
 const ballSelector = document.getElementById('ballSelector');
+const ballSelectorArrow = document.getElementById('ballSelectorArrow');
 const levelSettingsButton = document.getElementById('levelSettingsButton');
 const settingsModal = document.getElementById('levelSettingsModal');
 const closeSettingsBtn = settingsModal.querySelector('.close-button');
@@ -186,20 +187,20 @@ const sketch = (p) => {
         p.pop();
         
         if (gameState === 'aiming' && !ball) {
-            const regularButtons = ballSelector.querySelectorAll('.ball-select-btn:not([data-ball-type="giant"])');
-            if (ballsLeft > 0) {
-                ball = new Ball(p, board.x + board.width / 2, board.y + board.height - board.border, selectedBallType, board.gridUnitSize, upgradeableStats);
-                let activeRegularBall = false;
-                regularButtons.forEach(b => { if(b.classList.contains('active')) activeRegularBall = true; });
-                if(!activeRegularBall) {
+            const canUseRegular = ballsLeft > 0;
+            const canUseGiant = giantBallCount > 0;
+            
+            if (selectedBallType === 'giant' && canUseGiant) {
+                ball = new Ball(p, board.x + board.width / 2, board.y + board.height - board.border, 'giant', board.gridUnitSize, upgradeableStats);
+            } else if (canUseRegular) {
+                 if (selectedBallType === 'giant') { // Can't use giant, fallback
+                    selectedBallType = 'explosive';
                     document.querySelector('.ball-select-btn.active')?.classList.remove('active');
                     const firstRegularBtn = document.querySelector('.ball-select-btn[data-ball-type="explosive"]');
                     firstRegularBtn.classList.add('active');
-                    selectedBallType = firstRegularBtn.dataset.ballType;
+                    updateBallSelectorArrow();
                 }
-            } else if (giantBallCount > 0) {
-                document.querySelector('.ball-select-btn.active')?.classList.remove('active');
-                document.querySelector('.ball-select-btn[data-ball-type="giant"]')?.classList.add('active');
+                ball = new Ball(p, board.x + board.width / 2, board.y + board.height - board.border, selectedBallType, board.gridUnitSize, upgradeableStats);
             }
         }
 
@@ -233,21 +234,26 @@ const sketch = (p) => {
             if (brickEvents.length > 0) processEvents(brickEvents);
         });
 
-
-        if (ball) ball.draw();
-        miniBalls.forEach(mb => mb.draw());
-        
+        // --- RENDER ORDER ---
+        // 1. Bricks
         for (let c = 0; c < board.cols; c++) {
             for (let r = 0; r < board.rows; r++) {
                 if (bricks[c][r]) bricks[c][r].draw(board);
             }
         }
+
+        // 2. Balls
+        if (ball) ball.draw();
+        miniBalls.forEach(mb => mb.draw());
+
+        // 3. Brick Overlays
         for (let c = 0; c < board.cols; c++) {
             for (let r = 0; r < board.rows; r++) {
                 if (bricks[c][r]) bricks[c][r].drawOverlays(board);
             }
         }
       
+        // 4. VFX
         [particles, shockwaves, floatingTexts, powerupVFXs, stripeFlashes].forEach(vfxArray => {
             for (let i = vfxArray.length - 1; i >= 0; i--) { 
                 vfxArray[i].update(); 
@@ -291,7 +297,6 @@ const sketch = (p) => {
     p.addBall = () => { ballsLeft++; ballPurchaseCount++; };
     p.getCoins = () => coins;
     p.setCoins = (newCoins) => { coins = newCoins; };
-    p.useGiantBall = () => { if (giantBallCount > 0 && gameState === 'aiming') { giantBallCount--; isGiantBallTurn = true; ball = new Ball(p, board.x + board.width / 2, board.y + board.height - board.border, 'giant', board.gridUnitSize, upgradeableStats); ballSelector.classList.add('hidden'); } };
     p.changeBallType = (newType) => { if (gameState === 'aiming' && ball) { const oldPos = ball.pos.copy(); ball = new Ball(p, oldPos.x, oldPos.y, newType, board.gridUnitSize, upgradeableStats); } };
     p.toggleSpeed = () => { 
         isSpedUp = !isSpedUp; 
@@ -318,7 +323,11 @@ const sketch = (p) => {
                     if (event.isDead) {
                         particles.push(...createBallDeathVFX(p, ball.pos.x, ball.pos.y));
                         miniBalls = [];
-                        if (!isGiantBallTurn) ballsLeft--;
+                        if (isGiantBallTurn) {
+                            giantBallCount--;
+                        } else {
+                            ballsLeft--;
+                        }
                         ball = null;
                         sounds.ballDeath();
                         handleEndTurnEffects();
@@ -349,7 +358,7 @@ const sketch = (p) => {
                     if (event.childEvents && event.childEvents.length > 0) eventQueue.push(...event.childEvents);
                     break;
                  case 'explode_mine':
-                    eventQueue.push(...explode(event.pos, board.gridUnitSize * 1.5, 10, 'mine'));
+                    eventQueue.push(...explode(event.pos, board.gridUnitSize * 2, 10, 'mine'));
                     break;
             }
         }
@@ -363,7 +372,7 @@ const sketch = (p) => {
         shockwaves.push(new Shockwave(p, pos.x, pos.y, vfxRadius, p.color(255, 100, 0), 15));
         const explosionColor = p.color(255, 100, 0);
         for (let i = 0; i < 50; i++) particles.push(new Particle(p, pos.x, pos.y, explosionColor, p.random(5, 15), { lifespan: 60, size: p.random(3, 6) }));
-        sounds.explosion(); triggerShake(8, 15);
+        sounds.explosion(); triggerShake(4, 12);
         let hitEvents = [];
 
         const minC = Math.max(0, Math.floor((pos.x - radius - board.genX) / board.gridUnitSize));
@@ -453,7 +462,7 @@ const sketch = (p) => {
                         const centerVec = p.createVector(brickPos.x + brick.size / 2, brickPos.y + brick.size / 2);
                         switch (brick.type) {
                             case 'extraBall': ballsLeft++; sounds.coin(); floatingTexts.push(new FloatingText(p, centerVec.x, centerVec.y, "+1 Ball", p.color(0, 255, 127))); break;
-                            case 'explosive': newEvents.push(...explode(centerVec, board.gridUnitSize * 2.5, upgradeableStats.powerExplosionDamage, 'chain-reaction')); break;
+                            case 'explosive': newEvents.push(...explode(centerVec, board.gridUnitSize * 3, upgradeableStats.powerExplosionDamage, 'chain-reaction')); break;
                             case 'horizontalStripe': newEvents.push(...clearStripe(brick, 'horizontal')); break;
                             case 'verticalStripe': newEvents.push(...clearStripe(brick, 'vertical')); break;
                         }
@@ -605,7 +614,12 @@ const sketch = (p) => {
             const cancelRadius = ball.radius * 2.5; 
             if (p.dist(endAimPos.x, endAimPos.y, ball.pos.x, ball.pos.y) < cancelRadius) { isAiming = false; return; }
             let v = p.constructor.Vector.sub(endAimPos, ball.pos).limit(board.gridUnitSize).mult(0.5); 
-            if (v.mag() > 1) gameState = ball.launch(v, originalBallSpeed, isSpedUp, board.gridUnitSize); 
+            if (v.mag() > 1) {
+                if (ball.type === 'giant') {
+                    isGiantBallTurn = true;
+                }
+                gameState = ball.launch(v, originalBallSpeed, isSpedUp, board.gridUnitSize); 
+            }
             isAiming = false; 
         } 
     };
@@ -648,7 +662,7 @@ const sketch = (p) => {
     };
     
     function previewTrajectory(sP, sV) { 
-        let pos = sP.copy(), vel = sV.copy(); p.stroke(255, 255, 0, 100); p.strokeWeight(1.5); p.noFill(); p.beginShape(); 
+        let pos = sP.copy(), vel = sV.copy(); p.stroke(255, 255, 0, 100); p.strokeWeight(6); p.noFill(); p.beginShape(); 
         for (let i = 0; i < upgradeableStats.aimLength * 3; i++) { 
             p.vertex(pos.x, pos.y); pos.add(vel); 
             const right = board.x + board.width - board.border/2, bottom = board.y + board.height - board.border/2, left = board.x + board.border/2, top = board.y + board.border/2; 
@@ -899,12 +913,29 @@ function runCode() {
     pauseResumeBtn.textContent = 'Pause';
 }
 
+function updateBallSelectorArrow() {
+    const activeBtn = document.querySelector('.ball-select-btn.active');
+    if (!activeBtn || !ballSelectorArrow) return;
+
+    const isLandscape = window.innerWidth > window.innerHeight;
+    if (isLandscape) {
+        const topPos = activeBtn.offsetTop + activeBtn.offsetHeight / 2;
+        ballSelectorArrow.style.top = `${topPos}px`;
+        ballSelectorArrow.style.left = ''; // Clear horizontal positioning
+    } else {
+        const leftPos = activeBtn.offsetLeft + activeBtn.offsetWidth / 2 - ballSelectorArrow.offsetWidth / 2;
+        ballSelectorArrow.style.left = `${leftPos}px`;
+        ballSelectorArrow.style.top = ''; // Clear vertical positioning
+    }
+}
+
 function updateBallSelectorUI(balls, giantBalls, gameState) {
     const hasRegularBalls = balls > 0;
     const hasGiantBalls = giantBalls > 0;
 
     if (gameState === 'aiming' && (hasRegularBalls || hasGiantBalls)) {
         ballSelector.classList.remove('hidden');
+        updateBallSelectorArrow();
     } else {
         ballSelector.classList.add('hidden');
     }
@@ -1019,11 +1050,14 @@ function initialize() {
     document.querySelectorAll('.ball-select-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation(); // Prevent clicks from passing through to the canvas
-            if (btn.dataset.ballType === 'giant') { if (p5Instance) p5Instance.useGiantBall(); return; }
-            if (document.querySelector('.ball-select-btn.active')) document.querySelector('.ball-select-btn.active').classList.remove('active');
+            if (btn.disabled) return;
+            if (document.querySelector('.ball-select-btn.active')) {
+                document.querySelector('.ball-select-btn.active').classList.remove('active');
+            }
             btn.classList.add('active');
             selectedBallType = btn.dataset.ballType;
             if (p5Instance) p5Instance.changeBallType(selectedBallType);
+            updateBallSelectorArrow();
         });
     });
     

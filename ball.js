@@ -112,7 +112,7 @@ export class Ball {
         if (this.isPiercing && source === 'brick') return null; 
         
         this.hp -= amount; 
-        this.flashTime = 15;
+        this.flashTime = 8;
         
         let event = { type: 'damage_taken', source };
         

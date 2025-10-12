@@ -16,6 +16,7 @@ export class Brick {
         this.coins = 0; 
         this.coinIndicatorPositions = null; 
         this.overlay = null; 
+        this.flashTime = 0;
     }
 
     getPixelPos(board) {
@@ -34,6 +35,7 @@ export class Brick {
     hit(damage, source, board) {
         if (this.health <= 0) return null; 
         
+        this.flashTime = 8;
         const damageDealt = this.p.min(this.health, damage); 
         this.health -= damageDealt; 
         
@@ -78,10 +80,32 @@ export class Brick {
     draw(board) {
         const p = this.p;
         const pos = this.getPixelPos(board);
-        p.stroke(0); 
-        p.strokeWeight(2); 
-        p.fill(this.getColor()); 
-        p.rect(pos.x, pos.y, this.size, this.size);
+        const mainColor = this.getColor();
+        const shadowColor = p.lerpColor(mainColor, p.color(0), 0.4);
+        const outlineColor = p.lerpColor(mainColor, p.color(0), 0.2);
+        const cornerRadius = 4;
+        const extrusion = 3;
+
+        // Draw shadow/extrusion
+        p.noStroke();
+        p.fill(shadowColor);
+        p.rect(pos.x, pos.y + extrusion, this.size, this.size, cornerRadius);
+        p.rect(pos.x + extrusion, pos.y, this.size, this.size, cornerRadius);
+        p.fill(shadowColor);
+        p.rect(pos.x + extrusion, pos.y + extrusion, this.size, this.size, cornerRadius);
+
+        // Draw main brick
+        const outlineWidth = p.map(this.health, 10, GAME_CONSTANTS.MAX_BRICK_HP, 0, 5, true);
+        p.stroke(outlineColor);
+        p.strokeWeight(outlineWidth);
+        
+        let drawColor = mainColor;
+        if (this.flashTime > 0) {
+            drawColor = p.lerpColor(mainColor, p.color(255), 0.6);
+            this.flashTime--;
+        }
+        p.fill(drawColor);
+        p.rect(pos.x, pos.y, this.size, this.size, cornerRadius);
         
         const cX = pos.x + this.size / 2;
         const cY = pos.y + this.size / 2;
@@ -122,7 +146,6 @@ export class Brick {
              p.noStroke(); 
              const indicatorSize = this.size / 6; 
              for (let i = 0; i < numIndicators; i++) {
-                 // Recalculate indicator positions based on brick's current pos
                  const indicatorX = pos.x + this.coinIndicatorPositions[i].x;
                  const indicatorY = pos.y + this.coinIndicatorPositions[i].y;
                  p.ellipse(indicatorX, indicatorY, indicatorSize); 
@@ -131,16 +154,35 @@ export class Brick {
          if (this.overlay) {
             const cX = pos.x + this.size / 2; 
             const cY = pos.y + this.size / 2; 
-            const auraSize = this.size * 0.8;
-            p.noFill(); 
-            p.strokeWeight(2);
+            const auraSize = this.size * 0.7;
             const a = p.map(p.sin(p.frameCount * 0.05), -1, 1, 100, 255);
             if (this.overlay === 'healer') { 
-                p.stroke(144, 238, 144, a); p.ellipse(cX, cY, auraSize); 
-            } else if (this.overlay === 'builder') { 
-                p.stroke(135, 206, 250, a); p.line(cX - auraSize/2, cY, cX + auraSize/2, cY); p.line(cX, cY - auraSize/2, cX, cY + auraSize/2); 
+                const pulseSize = auraSize * p.map(p.sin(p.frameCount * 0.1), -1, 1, 0.9, 1.1);
+                const pulseAlpha = p.map(p.sin(p.frameCount * 0.1), -1, 1, 80, 80);
+                p.noFill();
+                p.strokeWeight(2);
+                p.stroke(255, 255, 255, pulseAlpha);
+                p.ellipse(cX, cY, pulseSize * 1.2);
+                p.stroke(255, 255, 255, pulseAlpha * 0.8);
+                p.ellipse(cX, cY, pulseSize * 1.5);
+            } else if (this.overlay === 'builder') {
+                const triSize = this.size * 0.25;
+                const offset = this.size * 0.3;
+                p.noStroke();
+                // Shadow
+                p.fill(0, 0, 0, 100);
+                p.triangle(cX, cY - offset - triSize, cX - triSize, cY - offset, cX + triSize, cY - offset); // Top
+                p.triangle(cX, cY + offset + triSize, cX - triSize, cY + offset, cX + triSize, cY + offset); // Bottom
+                p.triangle(cX - offset - triSize, cY, cX - offset, cY - triSize, cX - offset, cY + triSize); // Left
+                p.triangle(cX + offset + triSize, cY, cX + offset, cY - triSize, cX + offset, cY + triSize); // Right
+                // Main triangles
+                p.fill(135, 206, 250);
+                p.triangle(cX, cY - offset - triSize + 1, cX - triSize + 1, cY - offset, cX + triSize - 1, cY - offset); // Top
+                p.triangle(cX, cY + offset + triSize - 1, cX - triSize + 1, cY + offset, cX + triSize - 1, cY + offset); // Bottom
+                p.triangle(cX - offset - triSize + 1, cY, cX - offset, cY - triSize + 1, cX - offset, cY + triSize - 1); // Left
+                p.triangle(cX + offset + triSize - 1, cY, cX + offset, cY - triSize + 1, cX + offset, cY + triSize - 1); // Right
             } else if (this.overlay === 'mine') { 
-                p.stroke(255, 99, 71, a); p.ellipse(cX, cY, auraSize); p.ellipse(cX, cY, auraSize*0.5); 
+                p.stroke(255, 99, 71, a); p.strokeWeight(2); p.noFill(); p.ellipse(cX, cY, auraSize); p.ellipse(cX, cY, auraSize*0.5); 
             }
          }
     }

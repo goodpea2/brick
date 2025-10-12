@@ -406,6 +406,16 @@
         align-items: center;
     }
 
+    #ballSelectorArrow {
+        position: absolute;
+        top: -15px;
+        left: 0; /* Position is set by JS */
+        font-size: 20px;
+        color: var(--color-accent);
+        transition: left 0.15s ease-in-out;
+        pointer-events: none;
+    }
+
     #ballSelector h4 {
         margin: 0 10px 0 5px;
         padding: 0;
@@ -590,6 +600,13 @@
             transform: translateY(-50%);
             flex-direction: column;
         }
+        
+        #ballSelectorArrow {
+            top: 50%;
+            left: -15px;
+            transform: translateY(-50%) rotate(-90deg);
+            transition: top 0.15s ease-in-out, left 0.15s ease-in-out;
+        }
 
         #ballSelector h4 {
             writing-mode: vertical-rl;
@@ -695,22 +712,23 @@
       <div class="main-container">
         <div id="canvas-container"></div>
          <div id="ballSelector" class="hidden">
+            <div id="ballSelectorArrow">▼</div>
             <h4>Select Ball</h4>
             <button class="ball-select-btn active" data-ball-type="explosive">
                 <div class="ball-visual"></div>
-                <div class="tooltip">Explosive Ball: Use power to create a damaging explosion. (2 uses)</div>
+                <div class="tooltip">Explosive Ball: Explodes in a 2 tiles radius (2 uses)</div>
             </button>
             <button class="ball-select-btn" data-ball-type="piercing">
                  <div class="ball-visual"></div>
-                 <div class="tooltip">Piercing Ball: Power up to pierce through bricks. (2 uses)</div>
+                 <div class="tooltip">Piercing Ball: Phases through 5 bricks (2 uses)</div>
             </button>
             <button class="ball-select-btn" data-ball-type="split">
                  <div class="ball-visual"></div>
-                 <div class="tooltip">Split Ball: Power up to split into 3. Main ball takes damage on wall hits. (1 use)</div>
+                 <div class="tooltip">Split Ball: Spawns 2 smaller balls (1 use)</div>
             </button>
             <button class="ball-select-btn" data-ball-type="brick">
                  <div class="ball-visual"></div>
-                 <div class="tooltip">Brick Ball: Power up to summon a ring of bricks. (1 use)</div>
+                 <div class="tooltip">Brick Ball: Spawn a ring of 10 HP bricks (1 use)</div>
             </button>
             <button class="ball-select-btn hidden" data-ball-type="giant">
                 <div class="ball-visual"></div>
@@ -769,7 +787,7 @@
           </div>
           <div class="form-group">
             <label for="goalBrickCountIncrement">Goal Bricks/Lvl:</label>
-            <input type="number" id="goalBrickCountIncrement" value="0.35" min="0" step="0.01">
+            <input type="number" id="goalBrickCountIncrement" value="0.25" min="0" step="0.01">
           </div>
           <div class="form-group">
             <label for="extraBallBricks">+1 Ball Bricks:</label>
@@ -840,11 +858,11 @@
           <h4>Coin Settings</h4>
            <div class="form-group">
             <label for="startingCoin">Starting Coin Pool:</label>
-            <input type="number" id="startingCoin" value="5" min="0">
+            <input type="number" id="startingCoin" value="3" min="0">
           </div>
            <div class="form-group">
             <label for="coinIncrement">Coin Pool per Level:</label>
-            <input type="number" id="coinIncrement" value="5" min="0">
+            <input type="number" id="coinIncrement" value="3" min="0">
           </div>
             <div class="form-group">
             <label for="maxCoin">Max Coin Pool:</label>
@@ -863,7 +881,7 @@
       <div class="shop-header">
           <div class="shop-header-left">
               <button id="shopBalancingButton" class="shop-utility-btn">⚙️</button>
-              <button id="cheatCoinBtn" class="shop-utility-btn">🪙+</button>
+              <button id="cheatCoinBtn" class="shop-utility-btn">cheat</button>
           </div>
           <h2>Shop</h2>
           <div class="shop-header-right">
@@ -873,7 +891,7 @@
       
       <div id="buyBallCard" class="buy-ball-card">
           <h4>Extra Ball</h4>
-          <p>Get one more ball for the next round.</p>
+          <p>Get one more ball (price will increase)</p>
           <button id="buyBallButton" class="upgrade-cost-button"></button>
       </div>
 
