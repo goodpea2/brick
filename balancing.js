@@ -13,8 +13,7 @@ export const GRID_CONSTANTS = {
 };
 
 export const XP_SETTINGS = {
-    baseXpRequirement: 50,
-    xpRequirementMultiplier: 100,
+    xpBaseAmount: 50, // Base for level up formula: base * L * (L+1) / 2
     magneticRadiusMultiplier: 4, // Multiplied by ball radius
     magneticStrength: 10,
     xpPerOrb: 10,

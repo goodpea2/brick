@@ -154,7 +154,7 @@ export function initializeInput(gameController, runCode) {
             while (state.currentXp >= state.xpForNextLevel) {
                 state.currentXp -= state.xpForNextLevel;
                 state.mainLevel++;
-                state.xpForNextLevel = XP_SETTINGS.baseXpRequirement + (state.mainLevel - 1) * XP_SETTINGS.xpRequirementMultiplier;
+                state.xpForNextLevel = XP_SETTINGS.xpBaseAmount * state.mainLevel * (state.mainLevel + 1) / 2;
                 sounds.levelUp();
                 ui.showLevelUpModal(state.mainLevel);
             }

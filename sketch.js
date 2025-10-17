@@ -562,6 +562,8 @@ export const sketch = (p, state) => {
                 
                 const dX=b.pos.x-testX, dY=b.pos.y-testY; 
                 if (p.sqrt(dX*dX + dY*dY) <= b.radius) {
+                    if (b.isGhost && b.type === 'giant') continue;
+
                     if (b.type === 'piercing' && b.isPiercing) {
                         if (b.piercedBricks.has(brick)) continue;
                         b.piercedBricks.add(brick);
@@ -735,7 +737,7 @@ export const sketch = (p, state) => {
                 while (state.currentXp >= state.xpForNextLevel) {
                     state.currentXp -= state.xpForNextLevel;
                     state.mainLevel++;
-                    state.xpForNextLevel = XP_SETTINGS.baseXpRequirement + (state.mainLevel - 1) * XP_SETTINGS.xpRequirementMultiplier;
+                    state.xpForNextLevel = XP_SETTINGS.xpBaseAmount * state.mainLevel * (state.mainLevel + 1) / 2;
                     sounds.levelUp();
                     ui.showLevelUpModal(state.mainLevel);
                 }

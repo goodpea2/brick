@@ -19,7 +19,7 @@ export const state = {
     // Persistent Progression State
     mainLevel: 1,
     currentXp: 0,
-    xpForNextLevel: XP_SETTINGS.baseXpRequirement,
+    xpForNextLevel: XP_SETTINGS.xpBaseAmount, // Initial requirement for Lvl 1 -> 2 is 50.
     pendingXp: 0,
 };
 

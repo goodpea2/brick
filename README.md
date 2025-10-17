@@ -12,6 +12,8 @@ To ensure clear communication, here are the internal names for various game elem
     *   `piercing`: Yellow ball, power-up lets it fly through a set number of bricks.
     *   `split`: Yellow ball, power-up splits it into three.
     *   `brick`: Yellow ball, power-up spawns a ring of bricks.
+    *   `bullet`: Yellow ball, power-up fires 4 piercing projectiles.
+    *   `homing`: Yellow ball, power-up launches a seeking projectile.
     *   `giant`: A large, purple, consumable ball that pierces all bricks.
 
 *   **Brick Types:**
@@ -55,10 +57,23 @@ New features are unlocked at the following levels:
 *   **Level 12:** Unlock `BrickBall`. The **Brick Ball Coin %** upgrade appears in the shop.
 *   **Level 13:** Unlock the **Bonus XP** upgrade in the shop.
 *   **Level 14:** Unlock **Giant Ball** combo rewards.
+*   **Level 15:** Unlock `BulletBall`.
+*   **Level 18:** Unlock `HomingBall`.
 
 ---
 
 ## Request Log (Latest First)
+
+### Date: 2024-08-14
+
+**Features & Changes:**
+
+1.  **XP Progression Fix:**
+    *   Corrected the formula for the experience required to level up. It now follows the intended scaling curve (50 for Lv2, 150 for Lv3, 300 for Lv4, etc.), ensuring a more balanced progression.
+
+2.  **Documentation & UI:**
+    *   Performed a full audit of the project and updated the `README.md` to accurately reflect all current game mechanics, including the `BulletBall`, `HomingBall`, and the full unlock progression up to level 18.
+    *   The "Cheat XP" button in the Level Settings modal now correctly displays "+5000 XP".
 
 ### Date: 2024-08-13
 
@@ -66,14 +81,14 @@ New features are unlocked at the following levels:
 
 1.  **Brick Visual Overhaul:**
     *   The visuals for `normal` bricks have been completely redesigned to clearly communicate health.
-    *   **Color Tiers:** Bricks now cycle through four distinct color tiers (blue -> green -> yellow -> red) based on major 50 HP thresholds.
+    *   **Color Tiers:** Bricks now cycle through four distinct color tiers based on major 50 HP thresholds.
     *   **Pyramid Layers:** Within each color tier, bricks gain a new visible layer on top for every 10 HP, stacking up to a maximum of 5 layers. This creates an intuitive "pyramid" effect that shows health at a glance.
 
 2.  **Quality of Life & UI:**
     *   **Auto-Buy Ball:** If the player runs out of balls but has enough coins to purchase a new one, the game will now automatically buy a ball for them to prevent an unnecessary game over.
     *   **Result Overlay Fix:** Fixed a rendering order bug that was causing the "Game Over" and "Level Complete" screens to be hidden behind other game elements.
     *   **XP Sound Reset:** The sound effect for collecting XP orbs now resets its pitch if no orbs have been collected in the last 40 frames, improving audio feedback.
-    *   **Cheat XP Button:** This button in the Level Settings now spawns 100 XP orbs on the field for better testing of collection mechanics.
+    *   **Cheat XP Button:** This button in the Level Settings now adds XP directly for faster testing.
 
 ### Date: 2024-08-12
 
