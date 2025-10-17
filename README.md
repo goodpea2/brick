@@ -7,6 +7,7 @@ This file tracks the features and changes requested for the p5.js Brick Breaker 
 To ensure clear communication, here are the internal names for various game elements:
 
 *   **Ball Types:**
+    *   `classic`: Yellow ball, no abilities but 150% base HP. The starting ball.
     *   `explosive`: Yellow ball with red glow, power-up creates an explosion.
     *   `piercing`: Yellow ball, power-up lets it fly through a set number of bricks.
     *   `split`: Yellow ball, power-up splits it into three.
@@ -14,7 +15,7 @@ To ensure clear communication, here are the internal names for various game elem
     *   `giant`: A large, purple, consumable ball that pierces all bricks.
 
 *   **Brick Types:**
-    *   `normal`: The standard, upgradeable brick. Can host overlays.
+    *   `normal`: The standard, multi-layered brick. Its color and number of layers indicate its health. Can host overlays.
     *   `goal`: Yellow brick. All goal bricks must be destroyed to clear the level.
     *   `extraBall`: Green brick that grants an extra ball when destroyed.
     *   `explosive`: Orange brick that explodes when destroyed.
@@ -34,7 +35,105 @@ To ensure clear communication, here are the internal names for various game elem
 
 ---
 
+## Progression & Feature Unlocks
+
+The game features a persistent progression system based on the player's main XP Level. **XP and Main Level are never reset.** Run-specific progress like coins and shop upgrades are reset upon Game Over.
+
+New features are unlocked at the following levels:
+
+*   **Level 1:** Start with the `ClassicBall` and 3 starting balls per run.
+*   **Level 2:** Unlock `ExplosiveBall`. The **Explosive Damage** upgrade appears in the shop.
+*   **Level 3:** Unlock **Coins** and the **Shop**.
+*   **Level 4:** Unlock the **Combo System** and **Mine** combo rewards.
+*   **Level 5:** Increase the number of **+1 Ball Bricks** that spawn in levels.
+*   **Level 6:** Unlock `SplitBall`. The **Split Damage** upgrade appears in the shop.
+*   **Level 7:** Unlock `ExplosiveBrick` spawns in levels.
+*   **Level 8:** Unlock the ability to **purchase Extra Balls** in the shop.
+*   **Level 9:** Unlock `PiercingBall`. The **Piercing Damage** upgrade appears in the shop.
+*   **Level 10:** Unlock **Stripe Brick** combo rewards.
+*   **Level 11:** Gain **+1 Starting Ball** (total 4).
+*   **Level 12:** Unlock `BrickBall`. The **Brick Ball Coin %** upgrade appears in the shop.
+*   **Level 13:** Unlock the **Bonus XP** upgrade in the shop.
+*   **Level 14:** Unlock **Giant Ball** combo rewards.
+
+---
+
 ## Request Log (Latest First)
+
+### Date: 2024-08-13
+
+**Features & Changes:**
+
+1.  **Brick Visual Overhaul:**
+    *   The visuals for `normal` bricks have been completely redesigned to clearly communicate health.
+    *   **Color Tiers:** Bricks now cycle through four distinct color tiers (blue -> green -> yellow -> red) based on major 50 HP thresholds.
+    *   **Pyramid Layers:** Within each color tier, bricks gain a new visible layer on top for every 10 HP, stacking up to a maximum of 5 layers. This creates an intuitive "pyramid" effect that shows health at a glance.
+
+2.  **Quality of Life & UI:**
+    *   **Auto-Buy Ball:** If the player runs out of balls but has enough coins to purchase a new one, the game will now automatically buy a ball for them to prevent an unnecessary game over.
+    *   **Result Overlay Fix:** Fixed a rendering order bug that was causing the "Game Over" and "Level Complete" screens to be hidden behind other game elements.
+    *   **XP Sound Reset:** The sound effect for collecting XP orbs now resets its pitch if no orbs have been collected in the last 40 frames, improving audio feedback.
+    *   **Cheat XP Button:** This button in the Level Settings now spawns 100 XP orbs on the field for better testing of collection mechanics.
+
+### Date: 2024-08-12
+
+**Features & Changes:**
+
+1.  **Gameplay & Balancing:**
+    *   **Comprehensive Speed-Up:** The "Speed Up" button now affects the entire game simulation, running it at 3x speed. This includes physics, animations, cooldowns, VFX lifespans, and magnetic attraction forces.
+    *   **Shop Unlocks:** Shop upgrades for specific ball types (e.g., Explosive Damage) are now hidden until the corresponding ball is unlocked.
+    *   **New Upgrade: Bonus XP:** A new shop upgrade that increases XP gain is now available, unlocking at Level 13.
+    *   **Level 5 Unlock:** The unlock at level 5 has been changed from "+1 Starting Ball" to increasing the number of "+1 Ball Bricks" that appear in levels.
+    *   **Rebalancing:** Adjusted the cost for purchasing extra balls and the stats for the Brick Ball coin upgrade.
+
+2.  **VFX & SFX:**
+    *   **XP Collection SFX:** The sound for collecting XP orbs now increases in pitch with each subsequent orb collected in a chain.
+    *   **Mini-Ball Magnetism:** The small balls from `SplitBall` now have their own magnetic radius to help collect XP orbs.
+
+3.  **UI & Quality of Life:**
+    *   **XP Bar Animation:** The white "pending XP" preview bar now remains static while the main blue bar animates to fill up to it, providing clearer feedback.
+    *   **Shop Text:** Updated "Permanent Upgrades" to the more accurate "Upgrades for this run".
+
+### Date: 2024-08-09
+
+**Features & Changes:**
+
+1.  **New Progression System & Feature Unlocks:**
+    *   **Persistent XP:** Player's main level and XP are no longer reset on Game Over, creating a continuous progression path.
+    *   **Feature Gating:** Major game systems (new balls, shop, combos, etc.) are now unlocked gradually as the player levels up.
+    *   **Level Up Modal:** The level-up visual effect has been replaced with a popup panel that clearly announces the newly unlocked feature.
+
+2.  **New Ball Type: `ClassicBall`:**
+    *   Added the `ClassicBall`, a new starting ball with no special abilities but 150% of the standard ball's HP, providing a durable option for new players.
+
+3.  **UI & Quality of Life:**
+    *   **Player Level Badge:** The player's XP level is now shown in a compact, gem-like "XP Ore" badge in the top-left corner.
+    *   The `startingBalls` for a run is now determined by the player's main level unlocks (3, or 4).
+
+### Date: 2024-08-08
+
+**Features & Changes:**
+
+1.  **New Progression System:**
+    *   **XP and Leveling:** The score system has been completely replaced with a player leveling system based on Experience Points (XP).
+    *   **XP Bar:** A new, persistent XP bar is displayed at the top of the screen.
+    *   **Leveling Curve:** The XP required to level up increases with each level.
+
+2.  **New Loot System: XP Orbs:**
+    *   **Brick Drops:** Destroying a brick now drops XP Orbs. The number of orbs is based on the brick's initial maximum health (1 orb per 10 HP).
+    *   **Orb Collection:** Orbs become collectible after a 1-second delay. The player's ball has a magnetic field that automatically collects nearby orbs.
+    *   **UI Feedback:** Collected XP is added to a "pending" pool for the current turn, which is visualized on the XP bar. At the end of the turn, the pending XP is officially added to the player's total.
+
+3.  **VFX & SFX:**
+    *   Added new visuals for XP Orbs (idle, attraction, collection).
+    *   Added new sound effects for collecting an orb and for leveling up.
+    *   Added a major visual effect for the "LEVEL UP!" moment.
+
+4.  **UI & Quality of Life:**
+    *   **Player Level Badge:** The player's XP level is now shown in a compact, gem-like "XP Ore" badge in the top-left corner.
+    *   **Game Level Display:** The current game level (difficulty) is now also displayed in the top-left, separate from the player's XP level.
+    *   The "Score" display has been removed from the UI.
+    *   A "Cheat XP" button was added to the shop for easier testing of the new progression system.
 
 ### Date: 2024-08-07
 

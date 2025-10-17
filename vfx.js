@@ -1,4 +1,5 @@
 // vfx.js
+import { XP_SETTINGS } from './balancing.js';
 
 export class Particle { 
     constructor(p, x, y, c, velMag = 3, options={}) { 
@@ -156,16 +157,82 @@ export class StripeFlash {
     }
 }
 
+export class XpOrb {
+    constructor(p, x, y) {
+        this.p = p;
+        this.pos = p.createVector(x, y);
+        this.vel = p.constructor.Vector.random2D().mult(p.random(2, 5));
+        this.lifespan = 255;
+        this.cooldown = XP_SETTINGS.invulnerableTime;
+        this.isAttracted = false;
+        this.radius = 4;
+        this.attractionForce = XP_SETTINGS.magneticStrength;
+    }
+
+    update(attractors, timeMultiplier = 1) {
+        if (this.cooldown > 0) {
+            this.cooldown -= timeMultiplier;
+            this.vel.mult(0.9); // Slow down to a stop
+        } else if (attractors && attractors.length > 0) {
+            let closestDistSq = Infinity;
+            let closestAttractor = null;
+
+            for (const attractor of attractors) {
+                const dSq = this.p.constructor.Vector.sub(this.pos, attractor.pos).magSq();
+                if (dSq < closestDistSq) {
+                    closestDistSq = dSq;
+                    closestAttractor = attractor;
+                }
+            }
+
+            if (closestAttractor && closestDistSq < this.p.sq(closestAttractor.radius * XP_SETTINGS.magneticRadiusMultiplier)) {
+                this.isAttracted = true;
+                const accel = this.p.constructor.Vector.sub(closestAttractor.pos, this.pos);
+                accel.normalize();
+                accel.mult(this.attractionForce * timeMultiplier);
+                this.vel.add(accel);
+                this.vel.limit(15);
+            } else {
+                this.isAttracted = false;
+            }
+        }
+
+        if (!this.isAttracted) {
+             this.vel.mult(0.95);
+        }
+        
+        this.pos.add(this.vel);
+    }
+    
+    draw() {
+        const p = this.p;
+        const colorBase = p.color(0, 229, 255);
+        let alpha = this.lifespan;
+        if (this.cooldown > 0) {
+            alpha = p.map(this.cooldown, XP_SETTINGS.invulnerableTime, 0, 50, 200);
+        }
+        
+        // Glow
+        p.noStroke();
+        p.fill(colorBase.levels[0], colorBase.levels[1], colorBase.levels[2], alpha * 0.3);
+        p.ellipse(this.pos.x, this.pos.y, this.radius * 3);
+        
+        // Orb
+        p.fill(colorBase.levels[0], colorBase.levels[1], colorBase.levels[2], alpha);
+        p.ellipse(this.pos.x, this.pos.y, this.radius * 2);
+    }
+}
+
 export function createSplat(p, splatBuffer, x, y, brickColor, gridUnitSize) { 
     if (!splatBuffer) return; 
     const darkerColor = p.lerpColor(brickColor, p.color(0), 0.3); 
     splatBuffer.noStroke(); 
     splatBuffer.fill(darkerColor.levels[0], darkerColor.levels[1], darkerColor.levels[2], 20); 
-    const splatSize = gridUnitSize * 1.2; 
-    for (let i = 0; i < 5; i++) { 
+    const splatSize = gridUnitSize * 1; 
+    for (let i = 0; i < 2; i++) { 
         const offsetX = p.random(-splatSize / 2, splatSize / 2); 
         const offsetY = p.random(-splatSize / 2, splatSize / 2); 
-        const d = p.random(splatSize * 0.2, splatSize * 0.5); 
+        const d = p.random(splatSize * 0.15, splatSize * 0.75); 
         splatBuffer.ellipse(x + offsetX, y + offsetY, d, d); 
     } 
 }
@@ -173,15 +240,16 @@ export function createSplat(p, splatBuffer, x, y, brickColor, gridUnitSize) {
 export function createBrickHitVFX(p, x, y, c) { 
     const vfx = [];
     for (let i = 0; i < 15; i++) {
-        vfx.push(new Particle(p, x, y, c)); 
+        vfx.push(new Particle(p, x, y, c, 3, { size: p.random(2, 5) })); 
     }
     return vfx;
 }
 
 export function createBallDeathVFX(p, x, y) {
     const vfx = [];
+    const ballColor = p.color(0, 255, 127);
     for (let i = 0; i < 30; i++) {
-        vfx.push(new Particle(p, x, y, p.color(255, 255, 0), 4));
+        vfx.push(new Particle(p, x, y, ballColor, 4));
     }
     return vfx;
 }
