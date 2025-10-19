@@ -2,6 +2,34 @@
 
 let brickSprite;
 
+function drawGlossyCircle(buffer, pos, radius, color) {
+    // Main circle
+    buffer.fill(color);
+    buffer.noStroke();
+    buffer.ellipse(pos.x, pos.y, radius * 2);
+
+    // Inset shadow effect using a radial gradient for a smoother look
+    buffer.noFill();
+    const shadowGradient = buffer.drawingContext.createRadialGradient(
+        pos.x, pos.y, 0,
+        pos.x, pos.y, radius
+    );
+    shadowGradient.addColorStop(0.7, 'rgba(0,0,0,0)');
+    shadowGradient.addColorStop(1, 'rgba(0,0,0,0.5)');
+    buffer.drawingContext.fillStyle = shadowGradient;
+    buffer.ellipse(pos.x, pos.y, radius * 2);
+
+    // Glossy highlight effect
+    const highlightX = pos.x - radius * 0.3;
+    const highlightY = pos.y - radius * 0.3;
+    const highlightW = radius * 0.6;
+    const highlightH = radius * 0.5;
+    buffer.fill(255, 255, 255, 120);
+    buffer.noStroke();
+    buffer.ellipse(highlightX, highlightY, highlightW, highlightH);
+}
+
+
 class Projectile {
     constructor(p, pos, vel, damage) {
         this.p = p;
@@ -212,6 +240,7 @@ export class Ball {
         this.gridUnitSize = gridUnitSize;
         this.brickHitCooldowns = new Map();
         this.isDead = false;
+        this.isDying = false; // New property for "last stand"
         
         this.radius = gridUnitSize * 0.32; // 6.4 / 20
 
@@ -232,7 +261,14 @@ export class Ball {
             case 'brick': this.powerUpUses = this.powerUpMaxUses = 1; break;
             case 'bullet': this.powerUpUses = this.powerUpMaxUses = 3; break;
             case 'homing': this.powerUpUses = this.powerUpMaxUses = 2; break;
-            case 'giant': this.radius = gridUnitSize * 0.8; this.maxHp = 10; this.hp = 10; this.powerUpUses = 0; this.piercedBricks.clear(); break;
+            case 'giant': 
+                this.radius = gridUnitSize * 0.8; 
+                this.maxHp = 20; 
+                this.hp = 20; 
+                this.powerUpUses = 0; 
+                this.piercedBricks.clear();
+                this.damageDealtForHpLoss = 0;
+                break;
         }
 
         if (this.isGhost) this.hp = Infinity; // Re-apply after switch
@@ -291,6 +327,11 @@ export class Ball {
             if (this.pos.x - this.radius < left || this.pos.x + this.radius > right) { this.vel.x *= -1; this.pos.x = this.p.constrain(this.pos.x, left + this.radius, right - this.radius); wallHit = true; } 
             if (this.pos.y - this.radius < top || this.pos.y + this.radius > bottom) { this.vel.y *= -1; this.pos.y = this.p.constrain(this.pos.y, top + this.radius, bottom - this.radius); wallHit = true; }
             if (wallHit) {
+                if (this.isDying && this.type !== 'giant') {
+                    this.isDead = true;
+                    hitEvents.push({ type: 'dying_ball_death', pos: this.pos.copy() });
+                    break; 
+                }
                 if (this.isPiercing) {
                     this.piercedBricks.clear();
                 }
@@ -302,26 +343,24 @@ export class Ball {
         return hitEvents;
     }
 
-    takeDamage(amount, source = 'brick') { 
-        if (this.isGhost) return null;
-        if (this.isPiercing && source === 'brick') return null; 
+    takeDamage(amount, source = 'brick') {
+        if (this.isGhost) return null; // No damage to ghosts
+        // Allow damage to dying balls to be processed by shared HP, but don't re-trigger 'dying' state
+        if (this.isPiercing && source === 'brick') return null;
+
+        const damageDealt = amount;
+        let event = { type: 'damage_taken', source, ballType: this.type, damageAmount: damageDealt };
         
-        this.hp -= amount; 
-        this.flashTime = 8;
-        
-        let event = { type: 'damage_taken', source, ballType: this.type };
-        
-        if (this.hp <= 0 && this.isMoving) {
-            this.isMoving = false;
-            this.isDead = true;
-            event.isDead = true;
-        }
+        // isDead logic is now handled in sketch.js based on shared HP
         return event;
     }
 
-    usePowerUp(board) {
-        if (this.isGhost || this.powerUpUses <= 0 || !this.isMoving) return null;
-        this.powerUpUses--;
+
+    usePowerUp(board, skipDecrement = false) {
+        if (this.isGhost || (!skipDecrement && this.powerUpUses <= 0) || !this.isMoving) return null;
+        if (!skipDecrement) {
+            this.powerUpUses--;
+        }
         
         let powerUpResult = { vfx: [{type: 'powerup', pos: this.pos.copy()}] };
 
@@ -385,27 +424,123 @@ export class Ball {
         
         this.trail.forEach((t, i) => { const alpha = buffer.map(i, 0, this.trail.length, 0, 80); buffer.fill(ballColor.levels[0], ballColor.levels[1], ballColor.levels[2], alpha); buffer.noStroke(); buffer.ellipse(t.x, t.y, this.radius * 2 * (i/this.trail.length)); });
         buffer.noStroke();
-        if (this.type === 'giant') { const c1 = buffer.color(148, 0, 211); const c2 = buffer.color(75, 0, 130); buffer.fill(buffer.lerpColor(c1, c2, buffer.sin(buffer.frameCount * 0.1))); } else { buffer.fill(this.flashTime > 0 ? buffer.color(255) : ballColor); }
+        
+        let mainFillColor;
+        if (this.type === 'giant') { 
+            const c1 = buffer.color(148, 0, 211); 
+            const c2 = buffer.color(75, 0, 130); 
+            mainFillColor = buffer.lerpColor(c1, c2, buffer.sin(buffer.frameCount * 0.1)); 
+        } else { 
+            mainFillColor = (this.flashTime > 0 ? buffer.color(255) : ballColor); 
+        }
 
         const noPowerUps = this.powerUpUses <= 0;
 
         switch(this.type) {
-            case 'classic': buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2); break;
-            case 'giant': buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2); break;
-            case 'explosive': 
-                if (!noPowerUps) { const glowAlpha = buffer.map(buffer.sin(buffer.frameCount * 0.15), -1, 1, 100, 200); buffer.noStroke(); buffer.fill(255, 0, 0, glowAlpha); buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2.5); } 
-                buffer.fill(this.flashTime > 0 ? buffer.color(255) : ballColor);
-                buffer.stroke(0, 150); 
-                buffer.strokeWeight(1); 
-                buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2); 
-                if (!noPowerUps) { buffer.noFill(); buffer.stroke(255, 69, 0); buffer.strokeWeight(2); buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2.2); } 
+            case 'classic': 
+            case 'giant': 
+                drawGlossyCircle(buffer, this.pos, this.radius, mainFillColor);
                 break;
-            case 'piercing': buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2); if (!noPowerUps) { buffer.stroke(200); buffer.strokeWeight(1.5); if (buffer.drawingContext) buffer.drawingContext.setLineDash([3, 3]); buffer.noFill(); buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2.2); if (buffer.drawingContext) buffer.drawingContext.setLineDash([]); } if(this.isPiercing) { const glowSize = buffer.map(buffer.sin(buffer.frameCount * 0.2), -1, 1, 2.5, 3.0); buffer.fill(255, 255, 255, 80); buffer.noStroke(); buffer.ellipse(this.pos.x, this.pos.y, this.radius * glowSize); buffer.fill(255, 255, 255, 120); buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2.2); } break;
-            case 'split': buffer.push(); buffer.translate(this.pos.x, this.pos.y); if (!noPowerUps) { buffer.rotate(this.angle); for (let i = 0; i < 3; i++) { const a = buffer.TWO_PI/3 * i; buffer.ellipse(buffer.cos(a) * this.radius/2, buffer.sin(a) * this.radius/2, this.radius); } } else { buffer.ellipse(0, 0, this.radius * 2); } buffer.pop(); break;
-            case 'brick': buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2); if (!noPowerUps) { buffer.push(); buffer.translate(this.pos.x, this.pos.y); buffer.rotate(this.angle); if (!brickSprite) { const brickSize = this.gridUnitSize; brickSprite = this.p.createGraphics(brickSize, brickSize); brickSprite.stroke(0); brickSprite.strokeWeight(2); brickSprite.fill(100, 150, 255); brickSprite.rect(0,0,brickSize, brickSize); } buffer.image(brickSprite, -this.radius/2, -this.radius/2, this.radius, this.radius); buffer.pop(); } break;
-            case 'bullet': buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2); if (!noPowerUps) { buffer.stroke(0, 150); buffer.strokeWeight(2); buffer.line(this.pos.x - this.radius, this.pos.y, this.pos.x + this.radius, this.pos.y); buffer.line(this.pos.x, this.pos.y - this.radius, this.pos.x, this.pos.y + this.radius); } break;
-            case 'homing': buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2); if (!noPowerUps) { buffer.noFill(); buffer.stroke(255, 100, 0, 200); buffer.strokeWeight(2); buffer.ellipse(this.pos.x, this.pos.y, this.radius * 1.5); buffer.ellipse(this.pos.x, this.pos.y, this.radius * 0.8); } break;
-            default: buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2);
+            case 'explosive': 
+                drawGlossyCircle(buffer, this.pos, this.radius, mainFillColor);
+                if (!noPowerUps) { 
+                    const glowAlpha = buffer.map(buffer.sin(buffer.frameCount * 0.15), -1, 1, 150, 220);
+                    buffer.noFill();
+                    buffer.stroke(255, 0, 0, glowAlpha);
+                    buffer.strokeWeight(3);
+                    buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2.3);
+                } 
+                break;
+            case 'piercing': 
+                drawGlossyCircle(buffer, this.pos, this.radius, mainFillColor);
+                if (!noPowerUps) { 
+                    buffer.stroke(200); buffer.strokeWeight(1.5); 
+                    if (buffer.drawingContext) buffer.drawingContext.setLineDash([3, 3]); 
+                    buffer.noFill(); 
+                    buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2.2); 
+                    if (buffer.drawingContext) buffer.drawingContext.setLineDash([]); 
+                } 
+                if(this.isPiercing) { 
+                    const glowSize = buffer.map(buffer.sin(buffer.frameCount * 0.2), -1, 1, 2.5, 3.0); 
+                    buffer.fill(255, 255, 255, 80); 
+                    buffer.noStroke(); 
+                    buffer.ellipse(this.pos.x, this.pos.y, this.radius * glowSize); 
+                    buffer.fill(255, 255, 255, 120); 
+                    buffer.ellipse(this.pos.x, this.pos.y, this.radius * 2.2); 
+                } 
+                break;
+            case 'split': 
+                buffer.push(); 
+                buffer.translate(this.pos.x, this.pos.y); 
+                if (!noPowerUps) { 
+                    buffer.rotate(this.angle); 
+                    for (let i = 0; i < 3; i++) { 
+                        const a = buffer.TWO_PI/3 * i; 
+                        const x = buffer.cos(a) * this.radius/2;
+                        const y = buffer.sin(a) * this.radius/2;
+                        drawGlossyCircle(buffer, {x, y}, this.radius * 0.55, mainFillColor);
+                    } 
+                } else { 
+                    drawGlossyCircle(buffer, {x: 0, y: 0}, this.radius, mainFillColor); 
+                } 
+                buffer.pop(); 
+                break;
+            case 'brick': 
+                drawGlossyCircle(buffer, this.pos, this.radius, mainFillColor);
+                if (!noPowerUps) {
+                    buffer.push();
+                    buffer.translate(this.pos.x, this.pos.y);
+                    buffer.rotate(this.angle);
+                    const legDist = this.radius * 0.8;
+                    const legSize = this.radius * 0.4;
+                    const brickColor = buffer.color(100, 150, 255);
+                    const brickShadowColor = buffer.lerpColor(brickColor, buffer.color(0), 0.4);
+
+                    for (let i = 0; i < 4; i++) {
+                        const angle = buffer.PI / 4 + i * buffer.PI / 2;
+                        const x = buffer.cos(angle) * legDist;
+                        const y = buffer.sin(angle) * legDist;
+                        
+                        buffer.fill(brickShadowColor);
+                        buffer.noStroke();
+                        buffer.rect(x - legSize/2, y - legSize/2 + 1, legSize, legSize, 1);
+                        
+                        buffer.fill(brickColor);
+                        buffer.rect(x - legSize/2, y - legSize/2, legSize, legSize, 1);
+                    }
+                    buffer.pop();
+                }
+                break;
+            case 'bullet': 
+                drawGlossyCircle(buffer, this.pos, this.radius, mainFillColor);
+                if (!noPowerUps) {
+                    buffer.push();
+                    buffer.translate(this.pos.x, this.pos.y);
+                    buffer.noStroke();
+                    buffer.fill(0, 150);
+                    const ellipseW = this.radius * 0.6;
+                    const ellipseH = this.radius * 0.2;
+                    const offset = this.radius * 0.8;
+
+                    buffer.ellipse(0, -offset, ellipseW, ellipseH);
+                    buffer.ellipse(0, offset, ellipseW, ellipseH);
+                    buffer.ellipse(-offset, 0, ellipseH, ellipseW);
+                    buffer.ellipse(offset, 0, ellipseH, ellipseW);
+                    buffer.pop();
+                }
+                break;
+            case 'homing': 
+                drawGlossyCircle(buffer, this.pos, this.radius, mainFillColor);
+                if (!noPowerUps) { 
+                    buffer.noFill(); 
+                    buffer.stroke(255, 100, 0, 200); 
+                    buffer.strokeWeight(2); 
+                    buffer.ellipse(this.pos.x, this.pos.y, this.radius * 1.5); 
+                    buffer.ellipse(this.pos.x, this.pos.y, this.radius * 0.8); 
+                } 
+                break;
+            default: 
+                drawGlossyCircle(buffer, this.pos, this.radius, mainFillColor);
         }
     } 
 }

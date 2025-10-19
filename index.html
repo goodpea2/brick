@@ -151,11 +151,6 @@
       cursor: not-allowed;
       background-color: var(--color-bg2);
     }
-
-    #speedToggleBtn.speed-active {
-        background-color: #007bff;
-        color: white;
-    }
     
     /* Modal Styles */
     .modal {
@@ -210,10 +205,15 @@
       text-align: center;
     }
     
-    #levelUpModal h2 {
+    #levelUpModal h2, #resultScreen h2 {
         color: #00e5ff;
         font-size: 2.5em;
         text-shadow: 0 0 10px #00e5ff;
+    }
+    
+    #resultScreen h2.game-over {
+        color: #ff4136;
+        text-shadow: 0 0 10px #ff4136;
     }
 
     #levelUpModal h3 {
@@ -677,6 +677,12 @@
         color: #aaa;
     }
 
+    .debug-stats {
+        font-size: 0.8em;
+        color: #f39c12; /* Orange for debug */
+    }
+
+
     .coin-bank {
         position: absolute;
         top: 25px;
@@ -694,6 +700,65 @@
     .coin-bank:hover {
         transform: scale(1.05);
     }
+    
+    .top-right-btn {
+        position: absolute;
+        top: 80px; 
+        right: 15px;
+        pointer-events: all;
+        cursor: pointer;
+        border: none;
+        outline: none;
+        padding: 8px 12px;
+        transition: 0.3s;
+        background: var(--color-bg2);
+        color: var(--color-text);
+        border-radius: 5px;
+        font-family: 'Inconsolata', monospace;
+        font-size: 0.9em;
+    }
+    .top-right-btn:hover:not(:disabled) {
+        background-color: var(--color-bg3);
+    }
+    .top-right-btn:disabled {
+      color: var(--color-accent-disabled);
+      cursor: not-allowed;
+      background-color: var(--color-bg2);
+    }
+    .top-right-btn.speed-active {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    #cheat-buttons-container {
+        position: absolute;
+        top: 120px;
+        right: 15px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        align-items: flex-end;
+    }
+
+    .cheat-btn {
+        pointer-events: all;
+        cursor: pointer;
+        border: none;
+        outline: none;
+        padding: 6px 10px;
+        transition: 0.3s;
+        background: var(--color-bg2);
+        color: var(--color-text);
+        border-radius: 5px;
+        font-family: 'Inconsolata', monospace;
+        font-size: 0.8em;
+        width: 120px;
+        text-align: right;
+    }
+    .cheat-btn:hover {
+        background-color: var(--color-bg3);
+    }
+
 
     /* Coin Particle VFX */
     .coin-particle {
@@ -706,6 +771,31 @@
         z-index: 100;
         pointer-events: none;
         transition: transform 1s cubic-bezier(0.5, -0.5, 0.5, 1.5), opacity 1s linear;
+    }
+    
+    /* Result Screen Stats */
+    .result-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-top: 20px;
+        text-align: left;
+    }
+    .stat-box {
+        background-color: var(--color-bg);
+        padding: 10px;
+        border-radius: 5px;
+        border-left: 3px solid var(--color-accent);
+    }
+    .stat-label {
+        display: block;
+        font-size: 0.9em;
+        color: #aaa;
+        margin-bottom: 5px;
+    }
+    .stat-value {
+        font-size: 1.4em;
+        font-weight: bold;
     }
 
     /* Landscape mode for ball selector */
@@ -831,9 +921,21 @@
             <div class="stat-line seed-stat">
                 Seed: <span id="seed-stat">...</span>
             </div>
+            <div id="debugStatsContainer" class="stat-line debug-stats hidden">
+                <div>HP: <span id="debug-hp-stat">0 / 0</span></div>
+                <div>Coins: <span id="debug-coin-stat">0 / 0</span></div>
+            </div>
         </div>
         <div class="coin-bank">
             <span id="coin-stat">0</span> 🪙
+        </div>
+        <button id="speedToggleBtn" class="top-right-btn">Speed Up</button>
+        <div id="cheat-buttons-container" class="hidden">
+            <button id="cheatCoinBtn" class="cheat-btn">+1000 🪙</button>
+            <button id="cheatXpBtn" class="cheat-btn">+5000 XP</button>
+            <button id="cheatLevelBtn" class="cheat-btn">+10 Lvl</button>
+            <button id="cheatGiantBallBtn" class="cheat-btn">+1 Giant</button>
+            <button id="cheatEndTurnBtn" class="cheat-btn">End Turn</button>
         </div>
     </div>
     <div class="playground">
@@ -881,8 +983,8 @@
            <button id="levelSettingsButton">Level Settings</button>
            <button id="prevLevelBtn">Prev Level</button>
            <button id="nextLevelBtn">Next Level</button>
-           <button id="speedToggleBtn">Speed Up</button>
            <button id="pauseResumeBtn">Pause</button>
+           <button id="debugViewBtn">Debug View</button>
            <button id="clear">Reset</button>
         </div>
       </div>
@@ -936,6 +1038,14 @@
             <input type="number" id="goalBrickCountIncrement" value="0.25" min="0" step="0.01">
           </div>
           <div class="form-group">
+            <label for="goalBrickCap">Goal Brick Cap:</label>
+            <input type="number" id="goalBrickCap" value="8" min="1">
+          </div>
+          <div class="form-group">
+            <label for="goalBrickMaxHp">Goal Brick Max HP:</label>
+            <input type="number" id="goalBrickMaxHp" value="100" min="10">
+          </div>
+          <div class="form-group">
             <label for="extraBallBricks">+1 Ball Bricks:</label>
             <input type="number" id="extraBallBricks" value="1" min="0" max="20">
           </div>
@@ -943,6 +1053,11 @@
             <label for="explosiveBrickChance">Explosive Chance:</label>
             <input type="range" id="explosiveBrickChance" min="0" max="1" step="0.01" value="0.05">
             <span id="explosiveBrickChanceValue">0.05</span>
+          </div>
+           <div class="form-group">
+            <label for="ballCageBrickChance">Ball Cage Chance:</label>
+            <input type="range" id="ballCageBrickChance" min="0" max="1" step="0.01" value="0.05">
+            <span id="ballCageBrickChanceValue">0.05</span>
           </div>
            <hr>
            <h4>Bonus Level</h4>
@@ -979,6 +1094,10 @@
             <span id="fewBrickLayoutChanceValue">0.15</span>
           </div>
           <div class="form-group">
+            <label for="fewBrickLayoutChanceMinLevel">Min Level for Few Bricks:</label>
+            <input type="number" id="fewBrickLayoutChanceMinLevel" value="10" min="1">
+          </div>
+          <div class="form-group">
             <label for="startingBrickHp">Starting HP Pool:</label>
             <input type="number" id="startingBrickHp" value="100" min="1">
           </div>
@@ -989,6 +1108,10 @@
           <div class="form-group">
             <label for="brickHpIncrementMultiplier">HP Multiplier/Lvl:</label>
             <input type="number" id="brickHpIncrementMultiplier" value="1.05" min="1" step="0.01">
+          </div>
+           <div class="form-group">
+            <label for="maxBrickHpIncrement">Max HP Incr/Lvl:</label>
+            <input type="number" id="maxBrickHpIncrement" value="500" min="0">
           </div>
           <hr>
           <h4>Brick Overlays</h4>
@@ -1014,12 +1137,6 @@
             <label for="maxCoin">Max Coin Pool:</label>
             <input type="number"id="maxCoin" value="300" min="0">
           </div>
-          <hr>
-          <h4>Cheats</h4>
-            <div class="form-group" style="gap: 10px;">
-                <button id="cheatCoinBtn" class="modal-action-button" style="width: auto; padding: 8px 15px; margin-top:0;">+1000 Coin</button>
-                <button id="cheatXpBtn" class="modal-action-button" style="width: auto; padding: 8px 15px; margin-top:0;">+5000 XP</button>
-            </div>
         </div>
       </div>
       <button id="generateLevelButton" class="modal-action-button">Generate New Level</button>
@@ -1079,8 +1196,8 @@
             <h4>Upgrade Values</h4>
             <div class="form-group"><label>Ball HP Start:</label><input type="number" id="ballHpBaseValue" value="100"></div>
             <div class="form-group"><label>Ball HP / Lvl:</label><input type="number" id="ballHpValue" value="20"></div>
-            <div class="form-group"><label>Aim Len Start:</label><input type="number" id="aimLengthBaseValue" value="2"></div>
-            <div class="form-group"><label>Aim Length / Lvl:</label><input type="number" id="aimLengthValue" value="1"></div>
+            <div class="form-group"><label>Aim Len Start:</label><input type="number" id="aimLengthBaseValue" value="0.4"></div>
+            <div class="form-group"><label>Aim Length / Lvl:</label><input type="number" id="aimLengthValue" value="0.2"></div>
             <div class="form-group"><label>Explosion Dmg Start:</label><input type="number" id="powerExplosionDamageBaseValue" value="30"></div>
             <div class="form-group"><label>Explosion Dmg / Lvl:</label><input type="number" id="powerExplosionDamageValue" value="10"></div>
             <div class="form-group"><label>Piercing Dmg Start:</label><input type="number" id="piercingBonusDamageBaseValue" value="0"></div>
@@ -1107,6 +1224,39 @@
           <p id="levelUpUnlockText"></p>
       </div>
       <button id="levelUpCloseButton" class="modal-action-button">Continue</button>
+    </div>
+  </div>
+  
+  <!-- Result Screen Popup -->
+  <div id="resultScreen" class="modal hidden">
+    <div class="modal-content">
+        <h2 id="resultTitle"></h2>
+        <div id="resultStatsContainer" class="hidden">
+            <hr>
+            <div class="result-stats-grid">
+                <div class="stat-box">
+                    <span class="stat-label">Balls Used</span>
+                    <span id="statBallsUsed" class="stat-value">0</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Damage Dealt</span>
+                    <span id="statDamageDealt" class="stat-value">0</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Best Turn Damage</span>
+                    <span id="statBestTurnDamage" class="stat-value">0</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Coins Collected</span>
+                    <span id="statCoinsCollected" class="stat-value">0</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">XP Collected</span>
+                    <span id="statXpCollected" class="stat-value">0</span>
+                </div>
+            </div>
+        </div>
+        <button id="resultContinueButton" class="modal-action-button">Continue</button>
     </div>
   </div>
 

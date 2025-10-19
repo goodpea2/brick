@@ -15,6 +15,7 @@ export const state = {
     shopParams: { ...SHOP_PARAMS },
     upgradeState: JSON.parse(JSON.stringify(INITIAL_UPGRADE_STATE)),
     upgradeableStats: {},
+    isDebugView: false,
 
     // Persistent Progression State
     mainLevel: 1,

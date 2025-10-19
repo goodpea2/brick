@@ -35,6 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
         setCoins: (amount) => p5Instance?.setCoins(amount),
         addBall: () => p5Instance?.addBall(),
         getBallSpeedMultiplier: () => p5Instance?.getBallSpeedMultiplier(),
+        getGameState: () => p5Instance?.getGameState(),
+        addGiantBall: () => p5Instance?.addGiantBall(),
+        forceEndTurn: () => p5Instance?.forceEndTurn(),
     };
 
     initializeInput(gameController, runCode);

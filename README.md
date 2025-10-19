@@ -64,6 +64,18 @@ New features are unlocked at the following levels:
 
 ## Request Log (Latest First)
 
+### Date: 2024-08-15
+
+**Features & Changes:**
+
+1.  **Level Generation Logic Fix:**
+    *   Corrected the order of operations in level generation to ensure coins are distributed *after* the brick merging step. This fixes a bug where newly merged bricks would not contain any coins.
+    *   The coin distribution logic now correctly identifies all eligible normal bricks (including merged ones) to receive coins from the level's pool.
+
+2.  **Documentation:**
+    *   Added detailed comments to the `levelgen.js` file, outlining each step of the procedural generation process.
+    *   Added a new "Level Generation Logic" section to this `README.md` to provide a clear, high-level overview of how levels are built.
+
 ### Date: 2024-08-14
 
 **Features & Changes:**
@@ -281,3 +293,35 @@ New features are unlocked at the following levels:
     *   They are located in the bottom-left of the game area.
     *   The health bar's segments now visually represent partial health (e.g., a half-filled segment for 5 HP).
     *   The bar supports high HP values by wrapping into multiple rows, with a maximum of 10 segments per row, stacking from the bottom-up.
+
+---
+
+## Level Generation Logic
+
+The game's levels are procedurally generated to provide a unique challenge each time. The generation follows a specific, multi-step process to ensure balance and variety:
+
+1.  **Initialization & Seeding**: The process begins by creating an empty grid and using a "seed" (either user-provided or random) to ensure the level can be re-created exactly.
+
+2.  **Calculate Level Parameters**: Based on the player's current level number and the settings, the engine calculates key stats for the new level:
+    *   **Total Brick HP Pool**: The total health that will be distributed among all bricks. This scales up with each level.
+    *   **Total Coin Pool**: The total number of coins that will be embedded in bricks. Bonus levels receive a significant multiplier.
+    *   **Target Brick Count**: The number of normal bricks to place. This also scales with the level but has a chance to generate a rare "few brick layout" where the count is low but the HP per brick is very high.
+
+3.  **Place Special Bricks**: Critical bricks are placed first in random empty spots:
+    *   **Goal Bricks**: The yellow bricks that must be destroyed to win.
+    *   **+1 Ball Bricks**: Green bricks that grant an extra ball.
+
+4.  **Generate Brick Layout**: The engine places normal bricks until the `Target Brick Count` is met, using one of several patterns:
+    *   **Formulaic (Default)**: Uses mathematical formulas to create interesting shapes like circles, waves, triangles, and stars.
+    *   **Other Patterns**: Includes options for solid blocks, checkerboards, or spirals.
+
+5.  **Distribute HP & Create Overlays**: The `Total Brick HP Pool` is now distributed among the newly placed normal bricks, increasing their health from the base 10 HP. During this process:
+    *   Normal bricks have a chance to be converted into hosts for special **Builder** or **Healer** overlays, which costs a chunk of the HP pool.
+
+6.  **Merge Bricks**: The engine scans the grid for three adjacent normal bricks that have reached their maximum health (200 HP). If found, and if there's enough HP remaining in the pool, these three bricks are merged into a single, massive 3x1 or 1x3 brick with 600 HP.
+
+7.  **Distribute Coins**: After all bricks are placed, buffed, and potentially merged, the `Total Coin Pool` is distributed among the remaining `normal` bricks (including merged ones). A brick's health determines how many coins it can hold.
+
+8.  **Final Touches**:
+    *   **Ball Cages**: High-HP bricks have a final chance to spawn a special "Ball Cage" brick in a nearby empty tile.
+    *   The engine generates the small yellow coin indicators on bricks that have coins and does one last check to ensure at least one Goal brick exists before finishing.

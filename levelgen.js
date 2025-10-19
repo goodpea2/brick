@@ -16,14 +16,107 @@ function generateSingleFormulaPoints(p, cols, rows) {
     return generatedPoints.filter(pt => pt.c >= 0 && pt.c < cols && pt.r >= 0 && pt.r < rows);
 }
 
+function processBrickMerging(p, brickMatrix, hpPool, board) {
+    const { cols, rows, gridUnitSize } = board;
+    const mergeCost = GAME_CONSTANTS.MERGE_COST;
+    const mergeChance = 0.5;
+    const processedCoords = new Set(); // e.g., "c,r"
+
+    const isEligible = (c, r) => {
+        const brick = brickMatrix[c]?.[r];
+        return brick && (brick.type === 'normal' || brick.type === 'extraBall') && brick.health >= GAME_CONSTANTS.MAX_BRICK_HP && !processedCoords.has(`${c},${r}`);
+    };
+
+    let potentialMerges = [];
+
+    // Find all possible horizontal merges
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c <= cols - 3; c++) {
+            if (isEligible(c, r) && isEligible(c + 1, r) && isEligible(c + 2, r)) {
+                potentialMerges.push({ coords: [{c, r}, {c: c + 1, r}, {c: c + 2, r}], orientation: 'h' });
+            }
+        }
+    }
+
+    // Find all possible vertical merges
+    for (let c = 0; c < cols; c++) {
+        for (let r = 0; r <= rows - 3; r++) {
+            if (isEligible(c, r) && isEligible(c, r + 1) && isEligible(c, r + 2)) {
+                potentialMerges.push({ coords: [{c, r}, {c, r: r + 1}, {c, r: r + 2}], orientation: 'v' });
+            }
+        }
+    }
+    
+    p.shuffle(potentialMerges, true); // Randomize the order of all possible merges
+
+    for (const merge of potentialMerges) {
+        // Check if any of the coords have already been used in another merge
+        const canMerge = merge.coords.every(coord => !processedCoords.has(`${coord.c},${coord.r}`));
+
+        if (canMerge && hpPool >= mergeCost && p.random() < mergeChance) {
+            hpPool -= mergeCost;
+            
+            const sourceBricks = merge.coords.map(coord => brickMatrix[coord.c][coord.r]);
+            
+            // Aggregate stats from source bricks
+            const totalCoins = sourceBricks.reduce((sum, b) => sum + (b ? b.coins : 0), 0);
+            const totalMaxCoins = sourceBricks.reduce((sum, b) => sum + (b ? b.maxCoins : 0), 0);
+            const overlay = sourceBricks.find(b => b && b.overlay)?.overlay || null;
+            
+            const firstCoord = merge.coords[0];
+            const mergedBrick = new Brick(p, firstCoord.c - 6, firstCoord.r - 6, 'normal', 600, gridUnitSize);
+            mergedBrick.widthInCells = merge.orientation === 'h' ? 3 : 1;
+            mergedBrick.heightInCells = merge.orientation === 'v' ? 3 : 1;
+            
+            // Apply aggregated stats
+            mergedBrick.coins = totalCoins;
+            mergedBrick.maxCoins = totalMaxCoins;
+            mergedBrick.overlay = overlay;
+
+
+            // Place master brick and references, and mark coords as processed
+            merge.coords.forEach(coord => {
+                brickMatrix[coord.c][coord.r] = mergedBrick;
+                processedCoords.add(`${coord.c},${coord.r}`);
+            });
+        }
+    }
+    
+    return hpPool;
+}
+
+
 export function generateLevel(p, settings, level, board) {
+    // --- Step 1: Initialization ---
+    // Create an empty grid and set up the random seed for deterministic generation.
     const { cols, rows, gridUnitSize } = board;
     let brickMatrix = Array(cols).fill(null).map(() => Array(rows).fill(null));
 
     const currentSeed = (settings.seed !== null && !isNaN(settings.seed)) ? settings.seed : p.floor(p.random(1000000));
     p.randomSeed(currentSeed);
 
-    let currentBrickHpPool = (settings.startingBrickHp + (level - 1) * settings.brickHpIncrement) * Math.pow(settings.brickHpIncrementMultiplier, level - 1);
+    // --- Step 2: Calculate Level-Based Parameters ---
+    // Determine the HP pool, coin pool, and target number of bricks based on the current level and settings.
+    // This includes logic for bonus coin levels and rare "few brick" layouts.
+    
+    // Calculate HP Pool iteratively to respect the max increment cap
+    let currentBrickHpPool = settings.startingBrickHp;
+    const calculatePoolForLevel = (lvl) => {
+        if (lvl <= 1) return settings.startingBrickHp;
+        // This is the original formula
+        return (settings.startingBrickHp + (lvl - 1) * settings.brickHpIncrement) * Math.pow(settings.brickHpIncrementMultiplier, lvl - 1);
+    };
+    
+    for (let i = 2; i <= level; i++) {
+        const poolForLevelI = calculatePoolForLevel(i);
+        const increase = poolForLevelI - currentBrickHpPool;
+        if (increase > settings.maxBrickHpIncrement) {
+            currentBrickHpPool += settings.maxBrickHpIncrement;
+        } else {
+            currentBrickHpPool = poolForLevelI;
+        }
+    }
+
     let currentCoinPool = p.min(settings.maxCoin, settings.startingCoin + (level - 1) * settings.coinIncrement);
     if (level > 1 && level % settings.bonusLevelInterval === 0) { 
         const multiplier = p.random(settings.minCoinBonusMultiplier, settings.maxCoinBonusMultiplier); 
@@ -31,7 +124,7 @@ export function generateLevel(p, settings, level, board) {
     }
     
     let brickCountTarget = Math.floor(p.min(settings.maxBrickCount, settings.brickCount + (level - 1) * settings.brickCountIncrement));
-    if (p.random() < settings.fewBrickLayoutChance) {
+    if (level >= settings.fewBrickLayoutChanceMinLevel && p.random() < settings.fewBrickLayoutChance) {
         brickCountTarget = Math.floor(brickCountTarget * 0.2);
     }
 
@@ -49,16 +142,55 @@ export function generateLevel(p, settings, level, board) {
         return null; 
     };
     
-    const goalBricksToPlace = Math.floor(settings.goalBricks + (level - 1) * settings.goalBrickCountIncrement);
-    for (let i = 0; i < goalBricksToPlace; i++) { 
+    // --- Step 3: Place Special Bricks ---
+    // Prioritize placing Goal bricks, which are required to complete the level.
+    const totalGoalBrickValue = Math.floor(settings.goalBricks + (level - 1) * settings.goalBrickCountIncrement);
+    const actualBricksToPlace = Math.min(totalGoalBrickValue, settings.goalBrickCap);
+    const excessBricks = totalGoalBrickValue - actualBricksToPlace;
+    
+    const placedGoalBricks = [];
+    for (let i = 0; i < actualBricksToPlace; i++) { 
         const spot = takeNextAvailableCoord(); 
-        if(spot) brickMatrix[spot.c][spot.r] = new Brick(p, spot.c - 6, spot.r - 6, 'goal', 10, gridUnitSize); 
+        if(spot) {
+            const newGoalBrick = new Brick(p, spot.c - 6, spot.r - 6, 'goal', 10, gridUnitSize);
+            brickMatrix[spot.c][spot.r] = newGoalBrick;
+            placedGoalBricks.push(newGoalBrick);
+        }
     }
-    for (let i = 0; i < settings.extraBallBricks; i++) { 
-        const spot = takeNextAvailableCoord(); 
-        if(spot) brickMatrix[spot.c][spot.r] = new Brick(p, spot.c - 6, spot.r - 6, 'extraBall', 10, gridUnitSize); 
-    }
+    
+    // Distribute excess goal brick value by filling up one goal brick at a time
+    let currentGoalBrickIndex = 0;
+    for (let i = 0; i < excessBricks; i++) {
+        if (placedGoalBricks.length === 0) break;
 
+        // Find the next eligible brick to buff
+        let hasFoundBrick = false;
+        const initialIndex = currentGoalBrickIndex;
+        while (!hasFoundBrick) {
+            if (placedGoalBricks[currentGoalBrickIndex] && placedGoalBricks[currentGoalBrickIndex].health < settings.goalBrickMaxHp) {
+                hasFoundBrick = true;
+            } else {
+                currentGoalBrickIndex = (currentGoalBrickIndex + 1) % placedGoalBricks.length;
+                if (currentGoalBrickIndex === initialIndex) { // We've looped through all bricks and they're full
+                    i = excessBricks; // Break outer loop
+                    break;
+                }
+            }
+        }
+        if (i >= excessBricks) break; // Check if the inner loop broke the outer one
+
+        const brickToBuff = placedGoalBricks[currentGoalBrickIndex];
+        
+        // Add 10 HP
+        const hpToAdd = 10;
+        brickToBuff.health += hpToAdd;
+        brickToBuff.maxHealth += hpToAdd;
+    }
+    
+    // --- Step 4: Place Normal Bricks based on Pattern ---
+    // Fill the grid with the target number of normal bricks using the selected layout pattern (e.g., formulaic, solid).
+    // Some of these may be designated as special types like '+1 Ball' or 'Explosive' bricks.
+    // Each brick is created with a base health of 10 HP.
     let normalBrickCoords = [];
     if (settings.levelPattern === 'formulaic') {
          while (normalBrickCoords.length < brickCountTarget) {
@@ -89,67 +221,142 @@ export function generateLevel(p, settings, level, board) {
          }
     }
 
-    let tempNormalBricks = [];
+    let extraBallBricksPlaced = 0;
     let hpPlacedSoFar = 0;
     normalBrickCoords.forEach(spot => {
         if((hpPlacedSoFar + 10) <= currentBrickHpPool) {
-            const type = p.random() < settings.explosiveBrickChance ? 'explosive' : 'normal';
+            let type = 'normal';
+            if (p.random() < settings.explosiveBrickChance) {
+                type = 'explosive';
+            } else if (extraBallBricksPlaced < settings.extraBallBricks) {
+                type = 'extraBall';
+                extraBallBricksPlaced++;
+            }
             const newBrick = new Brick(p, spot.c - 6, spot.r - 6, type, 10, gridUnitSize);
             brickMatrix[spot.c][spot.r] = newBrick;
             hpPlacedSoFar += 10;
-            if (type === 'normal') tempNormalBricks.push(newBrick);
         }
     });
 
+    // --- Step 5: Distribute HP Pool ---
+    // Distribute the remaining HP from the level's HP pool among the placed normal and '+1 Ball' bricks.
+    // This phase also includes a chance to convert high-HP normal bricks into special 'Builder' or 'Healer' overlay hosts.
     let hpToDistribute = currentBrickHpPool - hpPlacedSoFar;
-    while (hpToDistribute > 0) {
-        let eligibleBricks = [];
-        for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) if (brickMatrix[c][r] && brickMatrix[c][r].type === 'normal') eligibleBricks.push(brickMatrix[c][r]);
-        
-        if (eligibleBricks.length === 0) break;
-        const brickToBuff = eligibleBricks[p.floor(p.random(eligibleBricks.length))];
-        const rand = p.random();
-        const builderCost = 100, healerCost = 80;
+    
+    const normalAndExtraBallBricks = [];
+    for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+            const b = brickMatrix[c][r];
+            if (b && (b.type === 'normal' || b.type === 'extraBall')) {
+                normalAndExtraBallBricks.push(b);
+            }
+        }
+    }
 
+    while (hpToDistribute > 0) {
+        let eligibleBricksForBuff = normalAndExtraBallBricks;
+        let eligibleBricksForOverlay = normalAndExtraBallBricks.filter(b => b.type === 'normal' && !b.overlay);
+
+        if (eligibleBricksForBuff.length === 0) break;
+        
+        const rand = p.random();
+        
         let converted = false;
-        if (!brickToBuff.overlay) {
+        if (eligibleBricksForOverlay.length > 0) {
+            const brickToOverlay = eligibleBricksForOverlay[p.floor(p.random(eligibleBricksForOverlay.length))];
+            
+            const builderCost = GAME_CONSTANTS.BUILDER_SPAWN_BASE_COST + brickToOverlay.health * GAME_CONSTANTS.OVERLAY_SPAWN_HP_MULTIPLIER;
+            const healerCost = GAME_CONSTANTS.HEALER_SPAWN_BASE_COST + brickToOverlay.health * GAME_CONSTANTS.OVERLAY_SPAWN_HP_MULTIPLIER;
+
             if (rand < settings.builderBrickChance && hpToDistribute >= builderCost) {
-                brickToBuff.overlay = 'builder';
+                brickToOverlay.overlay = 'builder';
                 hpToDistribute -= builderCost;
                 converted = true;
             } else if (rand < settings.builderBrickChance + settings.healerBrickChance && hpToDistribute >= healerCost) {
-                brickToBuff.overlay = 'healer';
+                brickToOverlay.overlay = 'healer';
                 hpToDistribute -= healerCost;
                 converted = true;
             }
         }
-
+        
         if (!converted) {
-            if (hpToDistribute >= 10 && brickToBuff.health < GAME_CONSTANTS.MAX_BRICK_HP) {
-                brickToBuff.health += 10;
-                brickToBuff.maxHealth += 10;
-                hpToDistribute -= 10;
+            const brickToBuff = eligibleBricksForBuff[p.floor(p.random(eligibleBricksForBuff.length))];
+            
+            const hpToAdd = 10;
+            const hpCost = brickToBuff.overlay ? hpToAdd * 2 : hpToAdd;
+            
+            if (hpToDistribute >= hpCost && brickToBuff.health < GAME_CONSTANTS.MAX_BRICK_HP) {
+                brickToBuff.health += hpToAdd;
+                brickToBuff.maxHealth += hpToAdd;
+                hpToDistribute -= hpCost;
             } else {
-                if (eligibleBricks.every(b => b.health >= GAME_CONSTANTS.MAX_BRICK_HP) || hpToDistribute < 10) {
+                const canBuffAny = eligibleBricksForBuff.some(b => {
+                    const cost = b.overlay ? 20 : 10;
+                    return hpToDistribute >= cost && b.health < GAME_CONSTANTS.MAX_BRICK_HP;
+                });
+                if (!canBuffAny) {
                     break;
                 }
             }
         }
     }
+    
+    // --- Step 6: Merge High-HP Bricks ---
+    // Scan the grid for adjacent, max-HP normal bricks and merge them into larger, more durable bricks.
+    // This adds another layer of variation and challenge.
+    hpToDistribute = processBrickMerging(p, brickMatrix, hpToDistribute, board);
 
-    if (tempNormalBricks.length > 0) { 
-        let coinsToDistribute = currentCoinPool; 
-        while (coinsToDistribute > 0) { 
-            const brickForCoins = tempNormalBricks[p.floor(p.random(tempNormalBricks.length))]; 
-            const coinsToAdd = p.min(coinsToDistribute, p.floor(p.random(2, 5)) * (brickForCoins.health / 10)); 
-            brickForCoins.coins += coinsToAdd; 
-            brickForCoins.maxCoins += coinsToAdd; 
-            coinsToDistribute -= coinsToAdd; 
-            if (coinsToDistribute <= 0) break; 
-            if (tempNormalBricks.every(b => b.coins > 1000)) break; 
-        } 
+    // --- Step 7: Spawn Special Cages (Optional) ---
+    // High-HP bricks have a chance to spawn a 'Ball Cage' brick in a nearby empty spot.
+    if (settings.ballCageBrickChance > 0) {
+        const bricksToCheck = [];
+        for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) if (brickMatrix[c][r]) bricksToCheck.push(brickMatrix[c][r]);
+        
+        bricksToCheck.forEach(brick => {
+            if (brick.health >= 100 && p.random() < settings.ballCageBrickChance) {
+                const emptySpot = takeNextAvailableCoord();
+                if (emptySpot) {
+                    brickMatrix[emptySpot.c][emptySpot.r] = new Brick(p, emptySpot.c - 6, emptySpot.r - 6, 'ballCage', 10, gridUnitSize);
+                }
+            }
+        });
+    }
+
+    const hpPoolSpent = currentBrickHpPool - hpToDistribute;
+
+    // --- Step 8: Distribute Coin Pool ---
+    // Distribute the level's coin pool among all 'normal' bricks, including newly merged ones.
+    // The amount of coins a brick can hold is proportional to its health.
+    const coinEligibleBricks = [];
+    const uniqueBricks = new Set();
+    for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+            const brick = brickMatrix[c][r];
+            // Only 'normal' type bricks (which includes merged bricks) can hold coins.
+            if (brick && brick.type === 'normal' && !uniqueBricks.has(brick)) {
+                coinEligibleBricks.push(brick);
+                uniqueBricks.add(brick);
+            }
+        }
+    }
+
+    if (coinEligibleBricks.length > 0) {
+        let coinsToDistribute = currentCoinPool;
+        while (coinsToDistribute > 0) {
+            const brickForCoins = coinEligibleBricks[p.floor(p.random(coinEligibleBricks.length))];
+            const coinsToAdd = p.min(coinsToDistribute, p.floor(p.random(2, 5)) * (brickForCoins.health / 10));
+            brickForCoins.coins += coinsToAdd;
+            brickForCoins.maxCoins += coinsToAdd;
+            coinsToDistribute -= coinsToAdd;
+            if (coinsToDistribute <= 0) break;
+            // Failsafe to prevent infinite loops if coins can't be distributed.
+            if (coinEligibleBricks.every(b => b.coins > 1000)) break;
+        }
     }
     
+    // --- Step 9: Finalization ---
+    // Generate visual indicators for bricks containing coins.
+    // As a final check, ensure at least one Goal brick exists on the board.
     let goalBrickCount = 0;
     for (let c = 0; c < cols; c++) {
         for (let r = 0; r < rows; r++) {
@@ -159,7 +366,6 @@ export function generateLevel(p, settings, level, board) {
                 if (b.maxCoins > 0) {
                     b.coinIndicatorPositions = [];
                     for (let i = 0; i < p.min(b.maxCoins, 20); i++) {
-                        // Store relative positions for recalculation in draw
                         b.coinIndicatorPositions.push(p.createVector(p.random(b.size * 0.1, b.size * 0.9), p.random(b.size * 0.1, b.size * 0.9)));
                     }
                 }
@@ -167,10 +373,16 @@ export function generateLevel(p, settings, level, board) {
         }
     }
 
-    if (goalBrickCount === 0) {
+    if (goalBrickCount === 0 && placedGoalBricks.length === 0) {
        const spot = takeNextAvailableCoord();
        if(spot) brickMatrix[spot.c][spot.r] = new Brick(p, spot.c - 6, spot.r - 6, 'goal', 10, gridUnitSize);
     }
     
-    return { bricks: brickMatrix, seed: currentSeed };
+    return { 
+        bricks: brickMatrix, 
+        seed: currentSeed,
+        hpPool: currentBrickHpPool,
+        hpPoolSpent,
+        coinPool: currentCoinPool,
+    };
 }

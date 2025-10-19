@@ -162,14 +162,32 @@ export class XpOrb {
         this.p = p;
         this.pos = p.createVector(x, y);
         this.vel = p.constructor.Vector.random2D().mult(p.random(2, 5));
-        this.lifespan = 255;
         this.cooldown = XP_SETTINGS.invulnerableTime;
         this.isAttracted = false;
         this.radius = 4;
         this.attractionForce = XP_SETTINGS.magneticStrength;
+        
+        this.state = 'idle'; // idle, attracted, collecting
+        this.collectionTimer = 0;
+        this.maxCollectionTime = 15; // frames
+        this.randomOffset = p.random(p.TWO_PI);
+    }
+
+    collect() {
+        this.state = 'collecting';
+        this.collectionTimer = this.maxCollectionTime;
+    }
+
+    isFinished() {
+        return this.state === 'collecting' && this.collectionTimer <= 0;
     }
 
     update(attractors, timeMultiplier = 1) {
+        if (this.state === 'collecting') {
+            this.collectionTimer -= timeMultiplier;
+            return; // Don't move anymore
+        }
+        
         if (this.cooldown > 0) {
             this.cooldown -= timeMultiplier;
             this.vel.mult(0.9); // Slow down to a stop
@@ -184,9 +202,11 @@ export class XpOrb {
                     closestAttractor = attractor;
                 }
             }
-
-            if (closestAttractor && closestDistSq < this.p.sq(closestAttractor.radius * XP_SETTINGS.magneticRadiusMultiplier)) {
+            
+            const magneticRadius = closestAttractor instanceof Object && closestAttractor.radius ? closestAttractor.radius : this.radius * 2;
+            if (closestAttractor && closestDistSq < this.p.sq(magneticRadius * XP_SETTINGS.magneticRadiusMultiplier)) {
                 this.isAttracted = true;
+                this.state = 'attracted';
                 const accel = this.p.constructor.Vector.sub(closestAttractor.pos, this.pos);
                 accel.normalize();
                 accel.mult(this.attractionForce * timeMultiplier);
@@ -194,6 +214,7 @@ export class XpOrb {
                 this.vel.limit(15);
             } else {
                 this.isAttracted = false;
+                if (this.state === 'attracted') this.state = 'idle';
             }
         }
 
@@ -206,15 +227,27 @@ export class XpOrb {
     
     draw() {
         const p = this.p;
+        
+        if (this.state === 'collecting') {
+            const progress = 1 - (this.collectionTimer / this.maxCollectionTime);
+            const radius = this.radius * 2 * (1 - progress * 2);
+            const alpha = 255 * (1 - progress);
+            p.noStroke();
+            p.fill(150, 229, 255, alpha * 0.8);
+            p.ellipse(this.pos.x, this.pos.y, radius * 2);
+            return;
+        }
+
         const colorBase = p.color(0, 229, 255);
-        let alpha = this.lifespan;
+        let alpha = 255;
         if (this.cooldown > 0) {
             alpha = p.map(this.cooldown, XP_SETTINGS.invulnerableTime, 0, 50, 200);
         }
         
-        // Glow
+        // Glow with idle shine
         p.noStroke();
-        p.fill(colorBase.levels[0], colorBase.levels[1], colorBase.levels[2], alpha * 0.3);
+        const shine = p.map(p.sin(p.frameCount * 0.1 + this.randomOffset), -1, 1, 0.2, 0.4);
+        p.fill(colorBase.levels[0], colorBase.levels[1], colorBase.levels[2], alpha * shine);
         p.ellipse(this.pos.x, this.pos.y, this.radius * 3);
         
         // Orb

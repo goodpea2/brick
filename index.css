@@ -584,6 +584,36 @@ main {
     transition: transform 1s cubic-bezier(0.5, -0.5, 0.5, 1.5), opacity 1s linear;
 }
 
+/* Cheat Buttons */
+#cheat-buttons-container {
+    position: absolute;
+    top: 120px;
+    right: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: flex-end;
+}
+.cheat-btn {
+    pointer-events: all;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    padding: 6px 10px;
+    transition: 0.3s;
+    background: var(--color-bg2);
+    color: var(--color-text);
+    border-radius: 5px;
+    font-family: 'Inconsolata', monospace;
+    font-size: 0.8em;
+    width: 120px;
+    text-align: right;
+}
+.cheat-btn:hover {
+    background-color: var(--color-bg3);
+}
+
+
 /* Landscape mode for ball selector */
 @media (orientation: landscape) {
     #ballSelector {

@@ -2,6 +2,11 @@
 
 export const GAME_CONSTANTS = {
     MAX_BRICK_HP: 200,
+    MERGED_BRICK_HP: 600,
+    MERGE_COST: 600,
+    BUILDER_SPAWN_BASE_COST: 120,
+    HEALER_SPAWN_BASE_COST: 80,
+    OVERLAY_SPAWN_HP_MULTIPLIER: 2,
 };
 
 export const GRID_CONSTANTS = {
@@ -12,9 +17,46 @@ export const GRID_CONSTANTS = {
     get TOTAL_ROWS() { return this.BRICK_ROWS + this.SAFE_ZONE_GRID * 2; },
 };
 
+export const BRICK_VISUALS = {
+    layersPerTier: 5,
+    hpPerLayer: {
+        normal: 10,
+        long: 30,
+        goal: 10,
+        extraBall: 10,
+    },
+    palettes: {
+        normal: [
+            [100, 150, 255],
+            [110, 100, 210],
+            [120, 50, 165],
+            [125, 0, 125]
+        ],
+        long: [
+            [100, 150, 255],
+            [110, 100, 210],
+            [120, 50, 165],
+            [125, 0, 125]
+        ],
+        extraBall: [
+            [0, 255, 127],
+            [45, 200, 85],
+            [55, 150, 50],
+            [50, 115, 5]
+        ],
+        goal: [
+            [255, 215, 0],
+            [255, 150, 0],
+            [225, 115, 0],
+            [220, 90, 0]
+        ]
+    }
+};
+
+
 export const XP_SETTINGS = {
     xpBaseAmount: 50, // Base for level up formula: base * L * (L+1) / 2
-    magneticRadiusMultiplier: 4, // Multiplied by ball radius
+    magneticRadiusMultiplier: 5, // Multiplied by ball radius
     magneticStrength: 10,
     xpPerOrb: 10,
     invulnerableTime: 60, // in frames
@@ -42,7 +84,8 @@ export const UNLOCK_LEVELS = {
     BONUS_XP_UPGRADE: 13,
     GIANT_BONUS: 14,
     BULLET_BALL: 15,
-    HOMING_BALL: 18,
+    BALL_CAGE_BRICK: 17,
+    HOMING_BALL: 19,
 };
 
 export const DEFAULT_LEVEL_SETTINGS = {
@@ -52,17 +95,22 @@ export const DEFAULT_LEVEL_SETTINGS = {
     ballSpeed: 0.4,
     goalBricks: 3,
     goalBrickCountIncrement: 0.25,
+    goalBrickCap: 8,
+    goalBrickMaxHp: 100,
     extraBallBricks: 1,
     explosiveBrickChance: 0.05,
+    ballCageBrickChance: 0.05,
     builderBrickChance: 0.03,
     healerBrickChance: 0.03,
     brickCount: 15,
     brickCountIncrement: 8,
     maxBrickCount: 100,
     fewBrickLayoutChance: 0.15,
+    fewBrickLayoutChanceMinLevel: 10,
     startingBrickHp: 100,
     brickHpIncrement: 80,
     brickHpIncrementMultiplier: 1.05,
+    maxBrickHpIncrement: 500,
     startingCoin: 3,
     coinIncrement: 3,
     maxCoin: 300,

@@ -108,12 +108,12 @@ export const sounds = {
             masterGain.gain.setValueAtTime(parseFloat(level), audioCtx.currentTime);
         }
     },
-    brickHit: (p, health) => { 
-        if (typeof health !== 'number' || !isFinite(health)) {
-            health = 10; // Default health if invalid value is passed
+    brickHit: (p, totalLayers) => { 
+        if (typeof totalLayers !== 'number' || !isFinite(totalLayers)) {
+            totalLayers = 1;
         }
-        const healthStep = Math.floor((health - 1) / 10);
-        const freqIndex = Math.min(healthStep, C_SCALE_DESC.length - 1);
+        // totalLayers is 1-based, array is 0-based.
+        const freqIndex = Math.min(Math.max(0, totalLayers - 1), C_SCALE_DESC.length - 1);
         const freq = C_SCALE_DESC[freqIndex];
         
         playSound({ freq: freq, duration: 0.3, type: 'square', volume: 0.25, decay: 0.12 }); 

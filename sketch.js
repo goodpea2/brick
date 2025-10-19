@@ -13,7 +13,8 @@ import { applyAllUpgrades } from './state.js';
 
 export const sketch = (p, state) => {
     // Game state variables
-    let ball;
+    let ballsInPlay = [];
+    let sharedBallStats = {}; // Holds HP, uses, etc., for all active balls in a turn
     let bricks = [[]]; // Now a 2D matrix
     let miniBalls = [];
     let projectiles = [];
@@ -23,11 +24,15 @@ export const sketch = (p, state) => {
     let isGiantBallTurn = false;
     let gameState = 'aiming'; // aiming, playing, levelClearing, levelComplete, gameOver
     let currentSeed;
+    let levelHpPool = 0, levelCoinPool = 0, levelHpPoolSpent = 0;
     
     // XP & Progression
     let xpOrbs = [];
     let orbsCollectedThisTurn = 0;
     let xpCollectPitchResetTimer = 0;
+    
+    // Per-level stats for the result screen
+    let levelStats = {};
 
     p.isModalOpen = false;
 
@@ -74,7 +79,7 @@ export const sketch = (p, state) => {
     
     function gameLoop(shouldRender, timeMultiplier) {
         // --- END TURN LOGIC ---
-        if ((gameState === 'playing' || gameState === 'levelClearing') && !ball && miniBalls.length === 0 && projectiles.length === 0) {
+        if ((gameState === 'playing' || gameState === 'levelClearing') && ballsInPlay.length === 0 && miniBalls.length === 0 && projectiles.length === 0) {
             handleEndTurnEffects();
             if (gameState === 'levelClearing') {
                 gameState = 'levelComplete';
@@ -84,7 +89,21 @@ export const sketch = (p, state) => {
         }
 
         // --- UPDATE LOGIC ---
-        ui.updateHeaderUI(level, state.mainLevel, ballsLeft, giantBallCount, currentSeed, coins, gameState);
+        let debugStats = null;
+        if (state.isDebugView) {
+            let currentHp = 0, currentCoins = 0, totalMaxHp = 0, totalMaxCoins = 0;
+            const uniqueBricks = new Set();
+            for(let c=0; c<board.cols; c++) for(let r=0; r<board.rows; r++) if(bricks[c][r]) uniqueBricks.add(bricks[c][r]);
+            uniqueBricks.forEach(b => { 
+                currentHp += b.health; 
+                currentCoins += b.coins;
+                totalMaxHp += b.maxHealth;
+                totalMaxCoins += b.maxCoins;
+            });
+            debugStats = { currentHp, hpPool: levelHpPool, currentCoins, coinPool: levelCoinPool, totalMaxHp, totalMaxCoins, hpPoolSpent: levelHpPoolSpent };
+        }
+        ui.updateHeaderUI(level, state.mainLevel, ballsLeft, giantBallCount, currentSeed, coins, gameState, debugStats);
+        
         ui.updateProgressionUI(state.mainLevel, state.currentXp, state.xpForNextLevel, state.pendingXp);
         
         if (xpCollectPitchResetTimer > 0) {
@@ -93,9 +112,19 @@ export const sketch = (p, state) => {
             orbsCollectedThisTurn = 0;
         }
 
-        if (gameState === 'aiming' && !ball) {
+        if (gameState === 'aiming' && ballsInPlay.length === 0) {
             let canUseRegular = ballsLeft > 0;
             const canUseGiant = giantBallCount > 0 && state.mainLevel >= UNLOCK_LEVELS.GIANT_BONUS;
+            
+            // Auto-select giant ball if out of regular balls
+            if (!canUseRegular && canUseGiant && state.selectedBallType !== 'giant') {
+                state.selectedBallType = 'giant';
+                document.querySelector('.ball-select-btn.active')?.classList.remove('active');
+                const giantBtn = document.querySelector('.ball-select-btn[data-ball-type="giant"]');
+                if (giantBtn) giantBtn.classList.add('active');
+                ui.updateBallSelectorArrow();
+            }
+
 
             if (!canUseRegular && !canUseGiant) {
                 // No balls left, try to auto-buy
@@ -114,30 +143,42 @@ export const sketch = (p, state) => {
                 }
             }
             
-            // This check needs to happen after potential auto-buy
             if (gameState !== 'gameOver') {
-                // Re-evaluate in case we just auto-bought a ball
                 canUseRegular = ballsLeft > 0;
                 const canUseGiantAfterCheck = giantBallCount > 0 && state.mainLevel >= UNLOCK_LEVELS.GIANT_BONUS;
 
-                if (state.selectedBallType === 'giant' && canUseGiantAfterCheck) {
-                    ball = new Ball(p, board.x + board.width / 2, board.y + board.height - board.border, 'giant', board.gridUnitSize, state.upgradeableStats);
-                } else if (canUseRegular) {
-                     if (state.selectedBallType === 'giant') { // Can't use giant, fallback
-                        state.selectedBallType = 'classic';
-                        document.querySelector('.ball-select-btn.active')?.classList.remove('active');
-                        const firstRegularBtn = document.querySelector('.ball-select-btn[data-ball-type="classic"]');
-                        firstRegularBtn.classList.add('active');
-                        ui.updateBallSelectorArrow();
-                    }
-                    ball = new Ball(p, board.x + board.width / 2, board.y + board.height - board.border, state.selectedBallType, board.gridUnitSize, state.upgradeableStats);
+                if (state.selectedBallType === 'giant' && !canUseGiantAfterCheck) {
+                    state.selectedBallType = 'classic';
+                    document.querySelector('.ball-select-btn.active')?.classList.remove('active');
+                    const firstRegularBtn = document.querySelector('.ball-select-btn[data-ball-type="classic"]');
+                    firstRegularBtn.classList.add('active');
+                    ui.updateBallSelectorArrow();
+                }
+
+                if (canUseRegular || canUseGiantAfterCheck) {
+                    const ballType = (state.selectedBallType === 'giant' && canUseGiantAfterCheck) ? 'giant' : state.selectedBallType;
+                    const newBall = new Ball(p, board.x + board.width / 2, board.y + board.height - board.border, ballType, board.gridUnitSize, state.upgradeableStats);
+                    ballsInPlay.push(newBall);
+                    sharedBallStats = {
+                        hp: newBall.hp,
+                        maxHp: newBall.maxHp,
+                        uses: newBall.powerUpUses,
+                        maxUses: newBall.powerUpMaxUses,
+                        flashTime: 0
+                    };
                 }
             }
         }
         
-        if ((gameState === 'playing' || gameState === 'levelClearing') && ball) {
-            const events = ball.update(board, (b) => circleRectCollision(b));
-            if (events.length > 0) processEvents(events);
+        if ((gameState === 'playing' || gameState === 'levelClearing') && ballsInPlay.length > 0) {
+            for (let i = ballsInPlay.length - 1; i >= 0; i--) {
+                const ball = ballsInPlay[i];
+                const events = ball.update(board, (b) => circleRectCollision(b));
+                if (events.length > 0) processEvents(events);
+                if (ball.isDead) {
+                    ballsInPlay.splice(i, 1);
+                }
+            }
         }
 
         for (let i = ghostBalls.length - 1; i >= 0; i--) {
@@ -150,7 +191,7 @@ export const sketch = (p, state) => {
 
         for (let i = miniBalls.length - 1; i >= 0; i--) {
             const mb = miniBalls[i];
-            const events = mb.update(board, ball, (b) => circleRectCollision(b));
+            const events = mb.update(board, ballsInPlay[0], (b) => circleRectCollision(b));
             if (events.length > 0) processEvents(events);
             if (mb.isDead) {
                 for(let k=0; k<10; k++) { particles.push(new Particle(p, mb.pos.x, mb.pos.y, p.color(127, 255, 212), 2, {lifespan: 40})); }
@@ -160,6 +201,10 @@ export const sketch = (p, state) => {
 
         for (let i = projectiles.length - 1; i >= 0; i--) {
             const proj = projectiles[i];
+            if (!proj) { // Defensive check to prevent crash
+                projectiles.splice(i, 1);
+                continue;
+            }
             const projEvent = proj.update(board, bricks);
             if (projEvent) {
                 if (projEvent.type === 'homing_explode') {
@@ -178,40 +223,37 @@ export const sketch = (p, state) => {
             shakeDuration -= timeMultiplier;
             if (shakeDuration <= 0) shakeAmount = 0;
         }
+         if (sharedBallStats.flashTime > 0) sharedBallStats.flashTime--;
 
         // --- XP Orb Logic ---
-        let attractors = [];
-        if (ball && ball.isMoving) attractors.push(ball);
-        attractors.push(...miniBalls);
+        const attractors = [...ballsInPlay, ...miniBalls];
 
         for (let i = xpOrbs.length - 1; i >= 0; i--) {
             const orb = xpOrbs[i];
             orb.update(attractors, timeMultiplier);
+
+            if (orb.isFinished()) {
+                xpOrbs.splice(i, 1);
+                continue;
+            }
             
             for (const attractor of attractors) {
                 const distToAttractor = p.dist(orb.pos.x, orb.pos.y, attractor.pos.x, attractor.pos.y);
-                
-                let collectionRadius;
-                if (attractor instanceof MiniBall) {
-                    const normalBallRadius = board.gridUnitSize * 0.32;
-                    collectionRadius = normalBallRadius * XP_SETTINGS.magneticRadiusMultiplier;
-                } else {
-                    collectionRadius = attractor.radius * XP_SETTINGS.magneticRadiusMultiplier;
-                }
+                const collectionRadius = attractor.radius;
 
-                if (orb.cooldown <= 0 && distToAttractor < collectionRadius) { // Collection radius
+                if (orb.cooldown <= 0 && orb.state !== 'collecting' && distToAttractor < collectionRadius) {
+                    orb.collect();
                     const xpFromOrb = XP_SETTINGS.xpPerOrb * (1 + state.upgradeableStats.bonusXp);
                     state.pendingXp += xpFromOrb;
+                    if (levelStats.xpCollected !== undefined) levelStats.xpCollected += xpFromOrb;
                     orbsCollectedThisTurn++;
-                    xpCollectPitchResetTimer = 40; // Reset timer on each collection
+                    xpCollectPitchResetTimer = 30;
                     sounds.orbCollect(orbsCollectedThisTurn);
                     const playerLevelBadgeEl = document.getElementById('player-level-badge');
                     if (playerLevelBadgeEl) {
                         playerLevelBadgeEl.classList.add('flash');
                         setTimeout(() => playerLevelBadgeEl.classList.remove('flash'), 150);
                     }
-                    for(let k=0; k<5; k++) { particles.push(new Particle(p, orb.pos.x, orb.pos.y, p.color(0, 229, 255), 2, {lifespan: 30})); }
-                    xpOrbs.splice(i, 1);
                     break; 
                 }
             }
@@ -219,9 +261,14 @@ export const sketch = (p, state) => {
         
         // VFX updates
         [particles, shockwaves, floatingTexts, powerupVFXs, stripeFlashes].forEach(vfxArray => {
-            for (let i = vfxArray.length - 1; i >= 0; i--) { 
-                vfxArray[i].update(); 
-                if (vfxArray[i].isFinished()) vfxArray.splice(i, 1); 
+            for (let i = vfxArray.length - 1; i >= 0; i--) {
+                const vfx = vfxArray[i];
+                if (!vfx) {
+                    vfxArray.splice(i, 1);
+                    continue;
+                }
+                vfx.update(); 
+                if (vfx.isFinished()) vfxArray.splice(i, 1); 
             }
         });
         
@@ -243,7 +290,8 @@ export const sketch = (p, state) => {
             p.translate(offsetX, offsetY);
         }
 
-        if (gameState === 'aiming' && isAiming && ball) {
+        if (gameState === 'aiming' && isAiming && ballsInPlay.length > 0) {
+            const ball = ballsInPlay[0];
             previewTrajectory(ball.pos, p.constructor.Vector.sub(endAimPos, ball.pos));
             const cancelRadius = ball.radius * AIMING_SETTINGS.AIM_CANCEL_RADIUS_MULTIPLIER;
             if (p.dist(endAimPos.x, endAimPos.y, ball.pos.x, ball.pos.y) < cancelRadius) {
@@ -271,13 +319,33 @@ export const sketch = (p, state) => {
         }
         
         // RENDER ORDER
-        for (let c = 0; c < board.cols; c++) for (let r = 0; r < board.rows; r++) if (bricks[c][r]) bricks[c][r].draw(board);
-        if (ball) ball.draw();
+        const drawnBricks = new Set();
+        for (let c = 0; c < board.cols; c++) {
+            for (let r = 0; r < board.rows; r++) {
+                const brick = bricks[c][r];
+                if (brick && !drawnBricks.has(brick)) {
+                    brick.draw(board);
+                    drawnBricks.add(brick);
+                }
+            }
+        }
+        ballsInPlay.forEach(b => { b.flashTime = sharedBallStats.flashTime; b.draw(); });
         ghostBalls.forEach(gb => gb.draw());
         miniBalls.forEach(mb => mb.draw());
         projectiles.forEach(proj => proj.draw());
         xpOrbs.forEach(orb => orb.draw());
-        for (let c = 0; c < board.cols; c++) for (let r = 0; r < board.rows; r++) if (bricks[c][r]) bricks[c][r].drawOverlays(board);
+        
+        const drawnOverlays = new Set();
+        for (let c = 0; c < board.cols; c++) {
+            for (let r = 0; r < board.rows; r++) {
+                const brick = bricks[c][r];
+                if (brick && !drawnOverlays.has(brick)) {
+                    brick.drawOverlays(board);
+                    drawnOverlays.add(brick);
+                }
+            }
+        }
+
         [particles, shockwaves, floatingTexts, powerupVFXs, stripeFlashes].forEach(vfxArray => vfxArray.forEach(v => v.draw()));
         
         drawInGameUI();
@@ -312,16 +380,28 @@ export const sketch = (p, state) => {
         const result = generateLevel(p, settings, level, board);
         bricks = result.bricks;
         currentSeed = result.seed;
+        levelHpPool = result.hpPool;
+        levelHpPoolSpent = result.hpPoolSpent;
+        levelCoinPool = result.coinPool;
+        ballsInPlay = [];
         miniBalls = [];
         projectiles = [];
         ghostBalls = [];
         xpOrbs = [];
-        ball = null;
         gameState = 'aiming';
         levelCompleteSoundPlayed = false; gameOverSoundPlayed = false;
         combo = 0; maxComboThisTurn = 0; isGiantBallTurn = false;
         orbsCollectedThisTurn = 0;
         xpCollectPitchResetTimer = 0;
+        
+        levelStats = {
+            ballsUsed: 0,
+            totalDamage: 0,
+            maxDamageInTurn: 0,
+            damageThisTurn: 0,
+            coinsCollected: 0,
+            xpCollected: 0,
+        };
     }
     p.spawnXpOrbs = (count, pos) => {
         for (let i = 0; i < count; i++) {
@@ -332,20 +412,42 @@ export const sketch = (p, state) => {
         state.originalBallSpeed = multiplier; 
         if (!board.gridUnitSize) return;
         const baseSpeed = (board.gridUnitSize * 0.5) * state.originalBallSpeed * (state.isSpedUp ? 2.0 : 1.0);
-        if (ball && ball.isMoving) ball.vel.setMag(baseSpeed); 
+        ballsInPlay.forEach(b => { if (b.isMoving) b.vel.setMag(baseSpeed); });
         miniBalls.forEach(mb => mb.vel.setMag(baseSpeed)); 
     };
     p.getBallSpeedMultiplier = () => state.originalBallSpeed;
     p.addBall = () => { ballsLeft++; state.ballPurchaseCount++; };
     p.getCoins = () => coins;
     p.setCoins = (newCoins) => { coins = newCoins; };
-    p.changeBallType = (newType) => { if (gameState === 'aiming' && ball) { const oldPos = ball.pos.copy(); ball = new Ball(p, oldPos.x, oldPos.y, newType, board.gridUnitSize, state.upgradeableStats); } };
+    p.changeBallType = (newType) => {
+        if (gameState === 'aiming' && ballsInPlay.length > 0) {
+            const oldPos = ballsInPlay[0].pos.copy();
+            const newBall = new Ball(p, oldPos.x, oldPos.y, newType, board.gridUnitSize, state.upgradeableStats);
+            ballsInPlay[0] = newBall;
+            
+            // Re-initialize shared stats for the new ball type
+            sharedBallStats = {
+                hp: newBall.hp,
+                maxHp: newBall.maxHp,
+                uses: newBall.powerUpUses,
+                maxUses: newBall.powerUpMaxUses,
+                flashTime: 0
+            };
+        }
+    };
     p.toggleSpeed = () => { 
         state.isSpedUp = !state.isSpedUp; 
-        const speedMultiplier = state.isSpedUp ? 2.0 : 1.0; 
-        const baseSpeed = (board.gridUnitSize * 0.5) * state.originalBallSpeed * speedMultiplier;
-        if (ball && ball.isMoving) ball.vel.setMag(baseSpeed); 
-        miniBalls.forEach(mb => mb.vel.setMag(baseSpeed)); return state.isSpedUp; 
+        p.setBallSpeedMultiplier(state.originalBallSpeed);
+        return state.isSpedUp; 
+    };
+    p.getGameState = () => gameState;
+    p.addGiantBall = () => { giantBallCount++; };
+    p.forceEndTurn = () => {
+        if (gameState === 'playing' || gameState === 'levelClearing') {
+            ballsInPlay = [];
+            miniBalls = [];
+            projectiles = [];
+        }
     };
     
     // --- EVENT & LOGIC PROCESSING ---
@@ -356,57 +458,74 @@ export const sketch = (p, state) => {
             if (!event) continue;
             switch (event.type) {
                 case 'damage_taken':
+                    if (event.source !== 'echo') {
+                        sharedBallStats.hp = Math.max(0, sharedBallStats.hp - event.damageAmount);
+                        sharedBallStats.flashTime = 8;
+                    }
                     if (event.source === 'wall') {
                         sounds.wallHit();
                         if (!isGiantBallTurn && combo > 0) { sounds.comboReset(); combo = 0; }
                     } else if (event.source === 'miniball_wall') {
                         sounds.wallHit();
                     }
-                    if (event.isDead) {
-                        particles.push(...createBallDeathVFX(p, ball.pos.x, ball.pos.y));
-                        if (isGiantBallTurn) {
-                            giantBallCount--;
-                        } else {
-                            ballsLeft--;
+                    
+                    if (sharedBallStats.hp <= 0 && ballsInPlay.length > 0 && !ballsInPlay[0].isDying) {
+                        for (const ball of ballsInPlay) {
+                            ball.isDying = true;
                         }
-                        if (event.ballType === 'split') {
+                        
+                        if (ballsInPlay[0].type === 'split') {
                             miniBalls.forEach(mb => mb.mainBallIsDead = true);
                         }
-                        ball = null;
-                        sounds.ballDeath();
+                        
+                        isGiantBallTurn = false;
 
                         if (state.isSpedUp) {
                             state.isSpedUp = false;
                             document.getElementById('speedToggleBtn').textContent = 'Speed Up';
                             document.getElementById('speedToggleBtn').classList.remove('speed-active');
                         }
-                        isGiantBallTurn = false;
                     }
                     break;
                 case 'brick_hit':
-                    if(event.coins > 0) {
-                        coins += event.coins; sounds.coin(); floatingTexts.push(new FloatingText(p, event.center.x, event.center.y, `+${event.coins}`, p.color(255, 223, 0)));
-                        const canvasRect = p.canvas.getBoundingClientRect(); ui.animateCoinParticles(canvasRect.left + event.center.x, canvasRect.top + event.center.y, event.coins);
+                    levelStats.totalDamage += event.damageDealt;
+                    levelStats.damageThisTurn += event.damageDealt;
+                    if(event.coinsDropped > 0) {
+                        coins += event.coinsDropped; 
+                        levelStats.coinsCollected += event.coinsDropped;
+                        sounds.coin(); 
+                        floatingTexts.push(new FloatingText(p, event.center.x, event.center.y, `+${event.coinsDropped}`, p.color(255, 223, 0)));
+                        const canvasRect = p.canvas.getBoundingClientRect(); ui.animateCoinParticles(canvasRect.left + event.center.x, canvasRect.top + event.center.y, event.coinsDropped);
                     }
                     particles.push(...createBrickHitVFX(p, event.center.x, event.center.y, event.color));
-                    sounds.brickHit(p, event.health);
+                    sounds.brickHit(p, event.totalLayers);
                     triggerShake(2, 5);
-                    if (event.source !== 'projectile') {
+                    if (event.source instanceof Object) {
                         handleCombo();
+                        // Dying ball state exception
+                        if ((event.source.type === 'piercing' || event.source.type === 'giant') && event.source.isDying) {
+                            event.source.isDead = true;
+                            particles.push(...createBallDeathVFX(p, event.source.pos.x, event.source.pos.y));
+                            sounds.ballDeath();
+                        }
                     }
                     if(event.isBroken) {
                         sounds.brickBreak();
                         particles.push(...createBrickHitVFX(p, event.center.x, event.center.y, event.color));
                         if (event.source !== 'chain-reaction' && event.source !== 'replaced') handleCombo('break', event.center);
                     }
-                    if (event.childEvents && event.childEvents.length > 0) eventQueue.push(...event.childEvents);
+                    if (event.events && event.events.length > 0) eventQueue.push(...event.events);
                     break;
                  case 'explode_mine':
                     eventQueue.push(...explode(event.pos, board.gridUnitSize * 2, 10, 'mine'));
                     break;
+                 case 'dying_ball_death':
+                    particles.push(...createBallDeathVFX(p, event.pos.x, event.pos.y));
+                    sounds.ballDeath();
+                    break;
             }
         }
-        processBrokenBricks();
+        processBrokenBricks(initialEvents.find(e => e.type === 'brick_hit'));
     }
 
     function triggerShake(amount, duration) { shakeAmount = Math.max(shakeAmount, amount); shakeDuration = Math.max(shakeDuration, duration); }
@@ -416,7 +535,10 @@ export const sketch = (p, state) => {
         shockwaves.push(new Shockwave(p, pos.x, pos.y, vfxRadius, p.color(255, 100, 0), 15));
         const explosionColor = p.color(255, 100, 0);
         for (let i = 0; i < 50; i++) particles.push(new Particle(p, pos.x, pos.y, explosionColor, p.random(5, 15), { lifespan: 60, size: p.random(3, 6) }));
-        sounds.explosion(); triggerShake(4, 12);
+        sounds.explosion();
+        triggerShake(4, 12);
+        
+        const hitBricks = new Set();
         let hitEvents = [];
 
         const minC = Math.max(0, Math.floor((pos.x - radius - board.genX) / board.gridUnitSize));
@@ -427,13 +549,28 @@ export const sketch = (p, state) => {
         for (let c = minC; c <= maxC; c++) {
             for (let r = minR; r <= maxR; r++) {
                 const brick = bricks[c][r];
-                if (brick) {
+                if (brick && !hitBricks.has(brick)) {
                     const brickPos = brick.getPixelPos(board);
-                    const brickCenter = p.createVector(brickPos.x + brick.size / 2, brickPos.y + brick.size / 2);
-                    if (p.dist(pos.x, pos.y, brickCenter.x, brickCenter.y) < radius) {
+                    const brickWidth = brick.size * brick.widthInCells;
+                    const brickHeight = brick.size * brick.heightInCells;
+
+                    // Accurate Circle-Rectangle collision test
+                    let testX = pos.x;
+                    let testY = pos.y;
+                    if (pos.x < brickPos.x) testX = brickPos.x;
+                    else if (pos.x > brickPos.x + brickWidth) testX = brickPos.x + brickWidth;
+                    if (pos.y < brickPos.y) testY = brickPos.y;
+                    else if (pos.y > brickPos.y + brickHeight) testY = brickPos.y + brickHeight;
+
+                    const distX = pos.x - testX;
+                    const distY = pos.y - testY;
+                    const distanceSq = (distX * distX) + (distY * distY);
+
+                    if (distanceSq <= radius * radius) {
+                        hitBricks.add(brick); // Add to set to prevent hitting the same brick multiple times
                         const hitResult = brick.hit(damage, source, board);
                         if (hitResult) {
-                            hitEvents.push({ type: 'brick_hit', points: hitResult.damageDealt, coins: hitResult.coinsDropped, isBroken: hitResult.isBroken, center: hitResult.center, color: hitResult.color, health: hitResult.health, childEvents: hitResult.events, source });
+                            hitEvents.push({ type: 'brick_hit', ...hitResult, source });
                         }
                     }
                 }
@@ -467,7 +604,7 @@ export const sketch = (p, state) => {
                 const b = bricks[c][gridR];
                 if (b) {
                     const hitResult = b.hit(30, 'chain-reaction', board);
-                    if (hitResult) hitEvents.push({ type: 'brick_hit', coins: hitResult.coinsDropped, isBroken: hitResult.isBroken, center: hitResult.center, color: hitResult.color, health: hitResult.health, childEvents: hitResult.events, source: 'chain-reaction' });
+                    if (hitResult) hitEvents.push({ type: 'brick_hit', ...hitResult, source: 'chain-reaction' });
                 }
             }
         } else { // Vertical
@@ -475,7 +612,7 @@ export const sketch = (p, state) => {
                  const b = bricks[gridC][r];
                  if (b) {
                     const hitResult = b.hit(30, 'chain-reaction', board);
-                    if (hitResult) hitEvents.push({ type: 'brick_hit', coins: hitResult.coinsDropped, isBroken: hitResult.isBroken, center: hitResult.center, color: hitResult.color, health: hitResult.health, childEvents: hitResult.events, source: 'chain-reaction' });
+                    if (hitResult) hitEvents.push({ type: 'brick_hit', ...hitResult, source: 'chain-reaction' });
                  }
             }
         }
@@ -492,7 +629,7 @@ export const sketch = (p, state) => {
         }
     }
 
-    function processBrokenBricks() {
+    function processBrokenBricks(lastBrickHitEvent) {
         let chainReaction = true;
         let newEvents = [];
         while (chainReaction) {
@@ -503,20 +640,43 @@ export const sketch = (p, state) => {
                     if (brick && brick.isBroken()) {
                         const brickPos = brick.getPixelPos(board);
                         createSplat(p, splatBuffer, brickPos.x + brick.size / 2, brickPos.y + brick.size / 2, brick.getColor(), board.gridUnitSize);
-                        const centerVec = p.createVector(brickPos.x + brick.size / 2, brickPos.y + brick.size / 2);
+                        const centerVec = p.createVector(
+                            brickPos.x + (brick.size * brick.widthInCells) / 2,
+                            brickPos.y + (brick.size * brick.heightInCells) / 2
+                        );
                         
                         const orbsToSpawn = Math.floor(brick.maxHealth / XP_SETTINGS.xpPerOrb);
-                        for (let i = 0; i < orbsToSpawn; i++) {
-                            xpOrbs.push(new XpOrb(p, centerVec.x, centerVec.y));
-                        }
+                        p.spawnXpOrbs(orbsToSpawn, centerVec);
 
                         switch (brick.type) {
                             case 'extraBall': ballsLeft++; sounds.ballGained(); floatingTexts.push(new FloatingText(p, centerVec.x, centerVec.y, "+1 Ball", p.color(0, 255, 127))); break;
                             case 'explosive': newEvents.push(...explode(centerVec, board.gridUnitSize * 3, state.upgradeableStats.powerExplosionDamage, 'chain-reaction')); break;
                             case 'horizontalStripe': newEvents.push(...clearStripe(brick, 'horizontal')); break;
                             case 'verticalStripe': newEvents.push(...clearStripe(brick, 'vertical')); break;
+                            case 'ballCage':
+                                if (ballsInPlay.length > 0 && lastBrickHitEvent && lastBrickHitEvent.sourceBallVel) {
+                                    const mainBall = ballsInPlay[0];
+                                    const newBall = new Ball(p, centerVec.x, centerVec.y, mainBall.type, board.gridUnitSize, state.upgradeableStats);
+                                    newBall.vel = lastBrickHitEvent.sourceBallVel.copy();
+                                    newBall.isMoving = true;
+
+                                    // Sync clone's state with the shared state
+                                    newBall.powerUpUses = sharedBallStats.uses;
+                                    newBall.powerUpMaxUses = sharedBallStats.maxUses;
+                                    newBall.hp = sharedBallStats.hp;
+                                    newBall.maxHp = sharedBallStats.maxHp;
+
+                                    ballsInPlay.push(newBall);
+                                    sounds.split();
+                                }
+                                break;
                         }
-                        bricks[c][r] = null;
+                        // Clear all cells occupied by the (potentially merged) brick
+                        for(let i=0; i<brick.widthInCells; i++) {
+                            for(let j=0; j<brick.heightInCells; j++) {
+                                bricks[c+i][r+j] = null;
+                            }
+                        }
                         chainReaction = true;
                     }
                 }
@@ -545,20 +705,36 @@ export const sketch = (p, state) => {
                 if (!brick) continue;
                 
                 const brickPos = brick.getPixelPos(board);
+                const brickWidth = brick.size * brick.widthInCells;
+                const brickHeight = brick.size * brick.heightInCells;
 
                 if (b.type === 'giant' && !b.isGhost) { 
-                    const dist = p.dist(b.pos.x, b.pos.y, brickPos.x + brick.size/2, brickPos.y + brick.size/2); 
-                    if(dist < b.radius + brick.size/2 && !b.piercedBricks.has(brick)) { 
-                        const hitResult = brick.hit(1000, 'ball', board);
-                        if (hitResult) hitEvents.push({ type: 'brick_hit', coins: hitResult.coinsDropped, isBroken: hitResult.isBroken, center: hitResult.center, color: hitResult.color, health: hitResult.health, childEvents: hitResult.events, source: 'ball' });
+                    const dist = p.dist(b.pos.x, b.pos.y, brickPos.x + brickWidth/2, brickPos.y + brickHeight/2); 
+                    if(dist < b.radius + Math.max(brickWidth, brickHeight)/2 && !b.piercedBricks.has(brick)) { 
+                        if (b.isDying) {
+                            b.isDead = true;
+                            hitEvents.push({ type: 'dying_ball_death', pos: b.pos.copy() });
+                            return hitEvents; // Stop processing hits
+                        }
+                        const hitResult = brick.hit(1000, b, board);
+                        if (hitResult) {
+                            hitEvents.push({ type: 'brick_hit', ...hitResult });
+                            b.damageDealtForHpLoss += hitResult.damageDealt;
+                            if (b.damageDealtForHpLoss >= 100) {
+                                const hpToLose = Math.floor(b.damageDealtForHpLoss / 100);
+                                const damageEvent = b.takeDamage(hpToLose, 'giant_power');
+                                if (damageEvent) hitEvents.push(damageEvent);
+                                b.damageDealtForHpLoss %= 100;
+                            }
+                        }
                         b.piercedBricks.add(brick); 
                     } 
                     continue; 
                 }
                 
                 let testX=b.pos.x, testY=b.pos.y; 
-                if (b.pos.x < brickPos.x) testX=brickPos.x; else if (b.pos.x > brickPos.x+brick.size) testX=brickPos.x+brick.size; 
-                if (b.pos.y < brickPos.y) testY=brickPos.y; else if (b.pos.y > brickPos.y+brick.size) testY=brickPos.y+brick.size;
+                if (b.pos.x < brickPos.x) testX=brickPos.x; else if (b.pos.x > brickPos.x+brickWidth) testX=brickPos.x+brickWidth; 
+                if (b.pos.y < brickPos.y) testY=brickPos.y; else if (b.pos.y > brickPos.y+brickHeight) testY=brickPos.y+brickHeight;
                 
                 const dX=b.pos.x-testX, dY=b.pos.y-testY; 
                 if (p.sqrt(dX*dX + dY*dY) <= b.radius) {
@@ -577,20 +753,25 @@ export const sketch = (p, state) => {
                     if (!b.isGhost && !isOnCooldown) {
                         let damage = (b instanceof MiniBall) ? state.upgradeableStats.splitMiniBallDamage : 10;
                         if (b.type === 'piercing' && b.stats && b.stats.piercingBonusDamage) damage += b.stats.piercingBonusDamage;
-                        const hitResult = brick.hit(damage, 'ball', board);
-                        if (hitResult) hitEvents.push({ type: 'brick_hit', coins: hitResult.coinsDropped, isBroken: hitResult.isBroken, center: hitResult.center, color: hitResult.color, health: hitResult.health, childEvents: hitResult.events, source: 'ball' });
+                        const hitResult = brick.hit(damage, b, board);
+                        if (hitResult) hitEvents.push({ type: 'brick_hit', ...hitResult });
                         b.brickHitCooldowns.set(brick, 3);
                     }
                     
-                    const brickCenterX = brickPos.x + brick.size / 2;
-                    const brickCenterY = brickPos.y + brick.size / 2;
-                    const deltaX = b.pos.x - brickCenterX;
-                    const deltaY = b.pos.y - brickCenterY;
-                    const overlapX = (b.radius + brick.size / 2) - Math.abs(deltaX);
-                    const overlapY = (b.radius + brick.size / 2) - Math.abs(deltaY);
+                    const brickCenterX = brickPos.x + brickWidth / 2;
+                    const brickCenterY = brickPos.y + brickHeight / 2;
+                    const w = brickWidth / 2;
+                    const h = brickHeight / 2;
+                    const dx = b.pos.x - brickCenterX;
+                    const dy = b.pos.y - brickCenterY;
 
-                    if (overlapX > overlapY) { b.vel.y *= -1; b.pos.y += overlapY * (deltaY > 0 ? 1 : -1); } 
-                    else { b.vel.x *= -1; b.pos.x += overlapX * (deltaX > 0 ? 1 : -1); }
+                    if (Math.abs(dx) / w > Math.abs(dy) / h) {
+                        b.vel.x *= -1;
+                        b.pos.x = brickCenterX + (w + b.radius) * Math.sign(dx);
+                    } else {
+                        b.vel.y *= -1;
+                        b.pos.y = brickCenterY + (h + b.radius) * Math.sign(dy);
+                    }
     
                     if (!b.isGhost && b.type === 'piercing' && !isOnCooldown) {
                         const event = b.takeDamage(2, 'brick');
@@ -612,44 +793,79 @@ export const sketch = (p, state) => {
                 document.getElementById('speedToggleBtn').textContent = 'Speed Up';
                 document.getElementById('speedToggleBtn').classList.remove('speed-active');
             }
-            p.fill(0,0,0,150); p.rect(board.x,board.y,board.width,board.height); p.fill(255); p.textSize(32); p.textAlign(p.CENTER,p.CENTER); 
-            if (gameState==='levelComplete') { p.text('Level Complete!', board.x+board.width/2, board.y+board.height/2); if(!levelCompleteSoundPlayed){sounds.levelComplete();levelCompleteSoundPlayed=true;}} 
-            else { p.text('Game Over', board.x+board.width/2, board.y+board.height/2); if(!gameOverSoundPlayed){sounds.gameOver();gameOverSoundPlayed=true;}} 
-            p.textSize(16); p.text('Click to Continue', board.x+board.width/2, board.y+board.height/2+40); 
+
+            if (gameState === 'levelComplete') {
+                if (!levelCompleteSoundPlayed) {
+                    sounds.levelComplete();
+                    levelCompleteSoundPlayed = true;
+                }
+                ui.showResultScreen('Level Complete!', false, levelStats);
+            } else { // Game Over
+                if (!gameOverSoundPlayed) {
+                    sounds.gameOver();
+                    gameOverSoundPlayed = true;
+                }
+                ui.showResultScreen('Game Over', true, levelStats);
+            }
         } 
     }
-    p.mousePressed = () => {
-        if (p.isModalOpen) return;
+
+    p.mousePressed = (event) => {
+        if (p.isModalOpen || event.target !== p.canvas) return;
         
-        if ((gameState === 'playing' || gameState === 'levelClearing') && ball) {
-            const clickInBoard = p.mouseX > board.x && p.mouseX < board.x + board.width && p.mouseY > board.y && p.mouseY < board.y + board.height;
-            if (!clickInBoard) return;
-            
-            const powerUpResult = ball.usePowerUp(board);
-            if(powerUpResult) {
-                if(powerUpResult.sound) sounds[powerUpResult.sound]();
-                if(powerUpResult.vfx) powerUpResult.vfx.forEach(vfx => { if(vfx.type === 'powerup') powerupVFXs.push(new PowerupVFX(p, vfx.pos.x, vfx.pos.y)); });
-                if(powerUpResult.effect) {
-                    const effect = powerUpResult.effect;
-                    if(effect.type === 'explode') {
-                        const explosionEvents = explode(effect.pos, effect.radius, state.upgradeableStats.powerExplosionDamage);
-                        processEvents(explosionEvents);
+        if (state.isDebugView) {
+            const gridC = Math.floor((p.mouseX - board.genX) / board.gridUnitSize);
+            const gridR = Math.floor((p.mouseY - board.genY) / board.gridUnitSize);
+            if (gridC >= 0 && gridC < board.cols && gridR >= 0 && gridR < board.rows) {
+                const brick = bricks[gridC][gridR];
+                if (brick) {
+                    const hitResult = brick.hit(10, 'debug_click', board);
+                    if (hitResult) {
+                        processEvents([{ type: 'brick_hit', ...hitResult }]);
                     }
-                    if(effect.type === 'spawn_miniballs') miniBalls.push(...effect.miniballs);
-                    if(effect.type === 'spawn_bricks') handleBrickSpawnPowerup(effect);
-                    if(effect.type === 'spawn_projectiles') projectiles.push(...effect.projectiles);
-                    if(effect.type === 'spawn_homing_projectile') {
-                        let targetBrick = null; let min_dist_sq = Infinity;
-                        for (let c=0; c<board.cols; c++) for(let r=0; r<board.rows; r++) { const b=bricks[c][r]; if (b&&b.type==='goal') { const bp=b.getPixelPos(board),d_sq=p.pow(ball.pos.x-(bp.x+b.size/2),2)+p.pow(ball.pos.y-(bp.y+b.size/2),2); if(d_sq<min_dist_sq){min_dist_sq=d_sq;targetBrick=b;}}}
-                        if (!targetBrick) { min_dist_sq=Infinity; for(let c=0; c<board.cols; c++) for(let r=0; r<board.rows; r++) { const b=bricks[c][r]; if(b){const bp=b.getPixelPos(board),d_sq=p.pow(ball.pos.x-(bp.x+b.size/2),2)+p.pow(ball.pos.y-(bp.y+b.size/2),2); if(d_sq<min_dist_sq){min_dist_sq=d_sq;targetBrick=b;}}}}
-                        if (targetBrick) projectiles.push(new HomingProjectile(p, ball.pos.copy(), ball.vel.copy().setMag(1), 10, targetBrick));
+                    return; // Prevent other mouse logic from running
+                }
+            }
+        }
+        
+        if ((gameState === 'playing' || gameState === 'levelClearing') && ballsInPlay.length > 0) {
+            if (sharedBallStats.uses > 0) {
+                sharedBallStats.uses--;
+                const powerUpTemplate = ballsInPlay[0].usePowerUp(board, true);
+                if (!powerUpTemplate) return;
+
+                if (powerUpTemplate.sound) sounds[powerUpTemplate.sound]();
+
+                for (const ball of ballsInPlay) {
+                    ball.powerUpUses = sharedBallStats.uses;
+
+                    if (powerUpTemplate.vfx) {
+                        powerupVFXs.push(new PowerupVFX(p, ball.pos.x, ball.pos.y));
+                    }
+
+                    const effect = ball.usePowerUp(board, true)?.effect;
+                    if (effect) {
+                        if (effect.type === 'explode') {
+                            const explosionEvents = explode(effect.pos, effect.radius, state.upgradeableStats.powerExplosionDamage);
+                            processEvents(explosionEvents);
+                        }
+                        if (effect.type === 'spawn_miniballs') miniBalls.push(...effect.miniballs);
+                        if (effect.type === 'spawn_bricks') handleBrickSpawnPowerup(effect);
+                        if (effect.type === 'spawn_projectiles') projectiles.push(...effect.projectiles);
+                        if (effect.type === 'spawn_homing_projectile') {
+                            let targetBrick = null; let min_dist_sq = Infinity;
+                            for (let c = 0; c < board.cols; c++) for (let r = 0; r < board.rows; r++) { const b = bricks[c][r]; if (b && b.type === 'goal') { const bp = b.getPixelPos(board), d_sq = p.pow(ball.pos.x - (bp.x + b.size / 2), 2) + p.pow(ball.pos.y - (bp.y + b.size / 2), 2); if (d_sq < min_dist_sq) { min_dist_sq = d_sq; targetBrick = b; } } }
+                            if (!targetBrick) { min_dist_sq = Infinity; for (let c = 0; c < board.cols; c++) for (let r = 0; r < board.rows; r++) { const b = bricks[c][r]; if (b) { const bp = b.getPixelPos(board), d_sq = p.pow(ball.pos.x - (bp.x + b.size / 2), 2) + p.pow(ball.pos.y - (bp.y + b.size / 2), 2); if (d_sq < min_dist_sq) { min_dist_sq = d_sq; targetBrick = b; } } } }
+                            if (targetBrick) projectiles.push(new HomingProjectile(p, ball.pos.copy(), ball.vel.copy().setMag(1), 10, targetBrick));
+                        }
                     }
                 }
             }
             return;
         }
         if (gameState === 'levelClearing') return;
-        if (gameState === 'aiming' && ball) { 
+        if (gameState === 'aiming' && ballsInPlay.length > 0) { 
+            const ball = ballsInPlay[0];
             const clickInBoard = p.mouseY > board.y && p.mouseY < board.y + board.height && p.mouseX > board.x && p.mouseX < board.x + board.width;
             if (clickInBoard) { 
                 isAiming = true; 
@@ -660,29 +876,47 @@ export const sketch = (p, state) => {
                 if(minDist===distTop){shootX=p.mouseX;shootY=board.y+board.border/2+ball.radius;} else if(minDist===distBottom){shootX=p.mouseX;shootY=board.y+board.height-board.border/2-ball.radius;} else if(minDist===distLeft){shootX=board.x+board.border/2+ball.radius;shootY=p.mouseY;} else {shootX=board.x+board.width-board.border/2-ball.radius;shootY=p.mouseY;} 
                 ball.pos.set(shootX, shootY); 
             }
-        } else if (gameState === 'levelComplete') { p.nextLevel(); }
-        else if (gameState === 'gameOver') { p.resetGame(ui.getLevelSettings()); }
+        }
     };
-    p.mouseDragged = () => { if (isAiming && ball) endAimPos.set(p.mouseX, p.mouseY); };
+    p.mouseDragged = () => { if (isAiming && ballsInPlay.length > 0) endAimPos.set(p.mouseX, p.mouseY); };
     p.mouseReleased = () => { 
-        if (isAiming && ball) { 
+        if (isAiming && ballsInPlay.length > 0) { 
+            const ball = ballsInPlay[0];
             ghostBalls = [];
             const cancelRadius = ball.radius * AIMING_SETTINGS.AIM_CANCEL_RADIUS_MULTIPLIER; 
             if (p.dist(endAimPos.x, endAimPos.y, ball.pos.x, ball.pos.y) < cancelRadius) { isAiming = false; return; }
             let v = p.constructor.Vector.sub(endAimPos, ball.pos).limit(board.gridUnitSize).mult(0.5); 
             if (v.mag() > 1) {
-                if (ball.type === 'giant') isGiantBallTurn = true;
-                gameState = ball.launch(v, state.originalBallSpeed, state.isSpedUp, board.gridUnitSize); 
+                levelStats.ballsUsed++;
+                if (ball.type === 'giant') {
+                    if (giantBallCount > 0) {
+                        giantBallCount--;
+                        isGiantBallTurn = true;
+                    } else {
+                        isAiming = false;
+                        return; // Safeguard against launching a giant ball we don't have
+                    }
+                } else {
+                    if (ballsLeft > 0) {
+                        ballsLeft--;
+                    } else {
+                        isAiming = false;
+                        return; // Safeguard against launching a regular ball we don't have
+                    }
+                }
+                gameState = ball.launch(v, state.originalBallSpeed); 
+                sharedBallStats.hp = ball.hp;
             }
             isAiming = false; 
         } 
     };
-    p.touchStarted = (event) => { if(event.target!==p.canvas)return; if(p.touches.length>0)p.mousePressed(); return false; };
+    p.touchStarted = (event) => { if(event.target!==p.canvas)return; if(p.touches.length>0)p.mousePressed(event); return false; };
     p.touchMoved = (event) => { if(event.target!==p.canvas)return; if(p.touches.length>0)p.mouseDragged(); if(isAiming)return false; };
     p.touchEnded = (event) => { if(event.target!==p.canvas)return; p.mouseReleased(); return false; };
     
     function previewTrajectory(sP, sV) {
-        if (!ball || sV.mag() < 1) return;
+        if (ballsInPlay.length === 0 || sV.mag() < 1) return;
+        const ball = ballsInPlay[0];
         let pos=sP.copy(), vel=sV.copy();
         p.stroke(0,255,127,150); p.strokeWeight(4);
         const lineLength=ball.radius*2*2, endPos=p.constructor.Vector.add(pos,vel.normalize().mult(lineLength));
@@ -710,12 +944,93 @@ export const sketch = (p, state) => {
     };
     
     function drawInGameUI() {
-        if (!ball || (!ball.isMoving && !isGiantBallTurn)) return;
-        const isLandscape=p.width>p.height, currentHpValue=ball.hp/10, totalSegments=Math.ceil(ball.maxHp/10);
-        if(isLandscape){let uiX=p.min(p.width*0.1,60),uiY=p.height/2;const segWidth=24,segHeight=8,segGap=3,iconSize=24,iconGap=6,availableHeight=p.min(p.height*0.8,500),segsPerCol=Math.floor(availableHeight/(segHeight+segGap)),numCols=Math.ceil(totalSegments/segsPerCol),barWidth=numCols*(segWidth+segGap),barHeight=(Math.min(segsPerCol,totalSegments)*(segHeight+segGap))-segGap;let totalUiHeight=barHeight;if(ball.powerUpMaxUses>0)totalUiHeight+=(ball.powerUpMaxUses*(iconSize+iconGap))+10;let currentDrawY=uiY-totalUiHeight/2;if(ball.powerUpMaxUses>0){for(let i=0;i<ball.powerUpMaxUses;i++){const x=uiX-iconSize/2,y=currentDrawY;p.strokeWeight(1.5);p.stroke(0);if(i<ball.powerUpUses)p.fill(255,193,7);else p.fill(108,117,125);p.beginShape();p.vertex(x+iconSize*0.4,y);p.vertex(x+iconSize*0.4,y+iconSize*0.5);p.vertex(x+iconSize*0.2,y+iconSize*0.5);p.vertex(x+iconSize*0.6,y+iconSize);p.vertex(x+iconSize*0.6,y+iconSize*0.6);p.vertex(x+iconSize*0.8,y+iconSize*0.6);p.endShape(p.CLOSE);currentDrawY+=iconSize+iconGap;}currentDrawY+=10;}for(let i=0;i<totalSegments;i++){const col=Math.floor(i/segsPerCol),row=i%segsPerCol,x=uiX-barWidth/2+col*(segWidth+segGap),y=currentDrawY+row*(segHeight+segGap);p.noStroke();p.fill(47,47,47);p.rect(x,y,segWidth,segHeight,2);let fillWidth=0;if(i<Math.floor(currentHpValue))fillWidth=segWidth;else if(i===Math.floor(currentHpValue))fillWidth=(currentHpValue%1)*segWidth;if(fillWidth>0){if(ball.flashTime>0&&ball.flashTime%10>5)p.fill(244,67,54);else p.fill(76,175,80);p.rect(x,y,fillWidth,segHeight,2);}}}else{let uiX=p.width/2,uiY=p.height-90;const segWidth=8,segHeight=16,segGap=2,iconSize=20,iconGap=5,availableWidth=p.min(p.width*0.9,400),segsPerRow=Math.floor(availableWidth/(segWidth+segGap)),numRows=Math.ceil(totalSegments/segsPerRow),barHeight=numRows*(segHeight+segGap);let currentY=uiY-barHeight;if(ball.powerUpMaxUses>0){const puBarWidth=ball.powerUpMaxUses*(iconSize+iconGap);for(let i=0;i<ball.powerUpMaxUses;i++){const x=uiX-puBarWidth/2+i*(iconSize+iconGap),y=currentY-(iconSize+5);p.strokeWeight(1.5);p.stroke(0);if(i<ball.powerUpUses)p.fill(255,193,7);else p.fill(108,117,125);p.beginShape();p.vertex(x+iconSize*0.4,y);p.vertex(x+iconSize*0.4,y+iconSize*0.5);p.vertex(x+iconSize*0.2,y+iconSize*0.5);p.vertex(x+iconSize*0.6,y+iconSize);p.vertex(x+iconSize*0.6,y+iconSize*0.6);p.vertex(x+iconSize*0.8,y+iconSize*0.6);p.endShape(p.CLOSE);}}for(let i=0;i<totalSegments;i++){const row=Math.floor(i/segsPerRow),col=i%segsPerRow,thisRowSegs=(row===numRows-1)?totalSegments%segsPerRow||segsPerRow:segsPerRow,rowWidth=thisRowSegs*(segWidth+segGap)-segGap,x=uiX-rowWidth/2+col*(segWidth+segGap),y=currentY+row*(segHeight+segGap);p.noStroke();p.fill(47,47,47);p.rect(x,y,segWidth,segHeight,1);let fillHeight=0;if(i<Math.floor(currentHpValue))fillHeight=segHeight;else if(i===Math.floor(currentHpValue))fillHeight=(currentHpValue%1)*fillHeight;if(fillHeight>0){if(ball.flashTime>0&&ball.flashTime%10>5)p.fill(244,67,54);else p.fill(76,175,80);p.rect(x,y+segHeight-fillHeight,segWidth,fillHeight,1);}}}
+        if (ballsInPlay.length === 0 || (!ballsInPlay[0].isMoving && !isGiantBallTurn)) return;
+        const ball = ballsInPlay[0];
+        const isLandscape = p.width > p.height;
+        const currentHpValue = sharedBallStats.hp / 10;
+        const totalSegments = Math.ceil(sharedBallStats.maxHp / 10);
+
+        if (isLandscape) {
+            let uiX = p.min(p.width * 0.1, 60);
+            let uiY = p.height / 2;
+            const segWidth = 24, segHeight = 8, segGap = 3, iconSize = 24, iconGap = 6;
+            const availableHeight = p.min(p.height * 0.8, 500);
+            const segsPerCol = Math.floor(availableHeight / (segHeight + segGap));
+            const numCols = Math.ceil(totalSegments / segsPerCol);
+            const barWidth = numCols * (segWidth + segGap);
+            const barHeight = (Math.min(segsPerCol, totalSegments) * (segHeight + segGap)) - segGap;
+
+            let totalUiHeight = barHeight;
+            if (sharedBallStats.maxUses > 0) {
+                totalUiHeight += (sharedBallStats.maxUses * (iconSize + iconGap)) + 10;
+            }
+
+            let currentDrawY = uiY - totalUiHeight / 2;
+
+            if (sharedBallStats.maxUses > 0) {
+                for (let i = 0; i < sharedBallStats.maxUses; i++) {
+                    const x = uiX - iconSize / 2, y = currentDrawY;
+                    p.strokeWeight(1.5); p.stroke(0);
+                    if (i < sharedBallStats.uses) p.fill(255, 193, 7); else p.fill(108, 117, 125);
+                    p.beginShape(); p.vertex(x + iconSize * 0.4, y); p.vertex(x + iconSize * 0.4, y + iconSize * 0.5); p.vertex(x + iconSize * 0.2, y + iconSize * 0.5); p.vertex(x + iconSize * 0.6, y + iconSize); p.vertex(x + iconSize * 0.6, y + iconSize * 0.6); p.vertex(x + iconSize * 0.8, y + iconSize * 0.6); p.endShape(p.CLOSE);
+                    currentDrawY += iconSize + iconGap;
+                }
+                currentDrawY += 10;
+            }
+
+            for (let i = 0; i < totalSegments; i++) {
+                const col = Math.floor(i / segsPerCol), row = i % segsPerCol;
+                const x = uiX - barWidth / 2 + col * (segWidth + segGap), y = currentDrawY + row * (segHeight + segGap);
+                p.noStroke(); p.fill(47, 47, 47); p.rect(x, y, segWidth, segHeight, 2);
+                let fillWidth = 0;
+                if (i < Math.floor(currentHpValue)) fillWidth = segWidth;
+                else if (i === Math.floor(currentHpValue)) fillWidth = (currentHpValue % 1) * segWidth;
+                if (fillWidth > 0) {
+                    if (sharedBallStats.flashTime > 0) p.fill(244, 67, 54); else p.fill(76, 175, 80);
+                    p.rect(x, y, fillWidth, segHeight, 2);
+                }
+            }
+        } else { // Portrait
+            let uiX = p.width / 2, uiY = p.height - 90;
+            const segWidth = 8, segHeight = 16, segGap = 2, iconSize = 20, iconGap = 5;
+            const availableWidth = p.min(p.width * 0.9, 400);
+            const segsPerRow = Math.floor(availableWidth / (segWidth + segGap));
+            const numRows = Math.ceil(totalSegments / segsPerRow);
+            const barHeight = numRows * (segHeight + segGap);
+
+            let currentY = uiY - barHeight;
+
+            if (sharedBallStats.maxUses > 0) {
+                const puBarWidth = sharedBallStats.maxUses * (iconSize + iconGap);
+                for (let i = 0; i < sharedBallStats.maxUses; i++) {
+                    const x = uiX - puBarWidth / 2 + i * (iconSize + iconGap), y = currentY - (iconSize + 5);
+                    p.strokeWeight(1.5); p.stroke(0);
+                    if (i < sharedBallStats.uses) p.fill(255, 193, 7); else p.fill(108, 117, 125);
+                    p.beginShape(); p.vertex(x + iconSize * 0.4, y); p.vertex(x + iconSize * 0.4, y + iconSize * 0.5); p.vertex(x + iconSize * 0.2, y + iconSize * 0.5); p.vertex(x + iconSize * 0.6, y + iconSize); p.vertex(x + iconSize * 0.6, y + iconSize * 0.6); p.vertex(x + iconSize * 0.8, y + iconSize * 0.6); p.endShape(p.CLOSE);
+                }
+            }
+
+            for (let i = 0; i < totalSegments; i++) {
+                const row = Math.floor(i / segsPerRow), col = i % segsPerRow;
+                const thisRowSegs = (row === numRows - 1) ? totalSegments % segsPerRow || segsPerRow : segsPerRow;
+                const rowWidth = thisRowSegs * (segWidth + segGap) - segGap;
+                const x = uiX - rowWidth / 2 + col * (segWidth + segGap), y = currentY + row * (segHeight + segGap);
+                p.noStroke(); p.fill(47, 47, 47); p.rect(x, y, segWidth, segHeight, 1);
+                let fillHeight = 0;
+                if (i < Math.floor(currentHpValue)) fillHeight = segHeight;
+                else if (i === Math.floor(currentHpValue)) fillHeight = (currentHpValue % 1) * segHeight;
+                if (fillHeight > 0) {
+                    if (sharedBallStats.flashTime > 0) p.fill(244, 67, 54); else p.fill(76, 175, 80);
+                    p.rect(x, y + segHeight - fillHeight, segWidth, fillHeight, 1);
+                }
+            }
+        }
     }
 
     function handleEndTurnEffects() {
+        levelStats.maxDamageInTurn = Math.max(levelStats.maxDamageInTurn, levelStats.damageThisTurn);
+        levelStats.damageThisTurn = 0;
+        
         giantBallCount += processComboRewards(p, maxComboThisTurn, state.mainLevel, board, bricks, floatingTexts);
         
         combo = 0; maxComboThisTurn = 0;
@@ -754,13 +1069,37 @@ export const sketch = (p, state) => {
 
     function handleBrickSpawnPowerup(effect) {
         const { center, coinChance } = effect;
-        const tiles=3, radius=tiles*board.gridUnitSize, gridPositions=new Set();
-        for(let i=0;i<72;i++){const angle=p.TWO_PI/72*i,x=center.x+radius*p.cos(angle),y=center.y+radius*p.sin(angle),gridC=Math.round((x-board.genX)/board.gridUnitSize),gridR=Math.round((y-board.genY)/board.gridUnitSize);if(gridC>=0&&gridC<board.cols&&gridR>=0&&gridR<board.rows)gridPositions.add(`${gridC},${gridR}`);}
-        const bricksToKillAndReplace=[],emptySpotsToFill=[];
-        gridPositions.forEach(posStr=>{const[gridC,gridR]=posStr.split(',').map(Number);let existingBrick=bricks[gridC][gridR];if(existingBrick){if(existingBrick.type==='normal')bricksToKillAndReplace.push({brick:existingBrick,pos:{c:gridC,r:gridR}});}else{emptySpotsToFill.push({c:gridC,r:gridR});}});
-        bricksToKillAndReplace.forEach(item=>{const hitResult=item.brick.hit(10000,'replaced',board);if(hitResult)processEvents([{type:'brick_hit',coins:hitResult.coinsDropped,isBroken:hitResult.isBroken,center:hitResult.center,color:hitResult.color,health:item.brick.health,childEvents:hitResult.events,source:'replaced'}]);});
+        const tiles = 3, radius = tiles * board.gridUnitSize, gridPositions = new Set();
+        for (let i = 0; i < 72; i++) {
+            const angle = p.TWO_PI / 72 * i;
+            const x = center.x + radius * p.cos(angle), y = center.y + radius * p.sin(angle);
+            const gridC = Math.round((x - board.genX) / board.gridUnitSize), gridR = Math.round((y - board.genY) / board.gridUnitSize);
+            if (gridC >= 0 && gridC < board.cols && gridR >= 0 && gridR < board.rows) gridPositions.add(`${gridC},${gridR}`);
+        }
+        const bricksToKillAndReplace = [], emptySpotsToFill = [];
+        gridPositions.forEach(posStr => {
+            const [gridC, gridR] = posStr.split(',').map(Number);
+            let existingBrick = bricks[gridC][gridR];
+            if (existingBrick) {
+                if (existingBrick.type === 'normal') bricksToKillAndReplace.push({ brick: existingBrick, pos: { c: gridC, r: gridR } });
+            } else {
+                emptySpotsToFill.push({ c: gridC, r: gridR });
+            }
+        });
+        bricksToKillAndReplace.forEach(item => {
+            const hitResult = item.brick.hit(10000, 'replaced', board);
+            if (hitResult) processEvents([{ type: 'brick_hit', ...hitResult }]);
+        });
         processBrokenBricks();
-        const spotsForNewBricks=emptySpotsToFill.concat(bricksToKillAndReplace.map(item=>item.pos));
-        spotsForNewBricks.forEach(pos=>{const newBrick=new Brick(p,pos.c-6,pos.r-6,'normal',10,board.gridUnitSize);if(p.random()<coinChance){newBrick.coins=newBrick.maxCoins=5;newBrick.coinIndicatorPositions=[];for(let i=0;i<p.min(newBrick.maxCoins,20);i++)newBrick.coinIndicatorPositions.push(p.createVector(p.random(newBrick.size*0.1,newBrick.size*0.9),p.random(newBrick.size*0.1,newBrick.size*0.9)));}bricks[pos.c][pos.r]=newBrick;});
+        const spotsForNewBricks = emptySpotsToFill.concat(bricksToKillAndReplace.map(item => item.pos));
+        spotsForNewBricks.forEach(pos => {
+            const newBrick = new Brick(p, pos.c - 6, pos.r - 6, 'normal', 10, board.gridUnitSize);
+            if (p.random() < coinChance) {
+                newBrick.coins = newBrick.maxCoins = 5;
+                newBrick.coinIndicatorPositions = [];
+                for (let i = 0; i < p.min(newBrick.maxCoins, 20); i++) newBrick.coinIndicatorPositions.push(p.createVector(p.random(newBrick.size * 0.1, newBrick.size * 0.9), p.random(newBrick.size * 0.1, newBrick.size * 0.9)));
+            }
+            bricks[pos.c][pos.r] = newBrick;
+        });
     }
 };

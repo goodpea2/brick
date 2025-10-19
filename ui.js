@@ -1,4 +1,3 @@
-
 // ui.js - All DOM manipulation and UI update logic
 
 import * as dom from './dom.js';
@@ -74,12 +73,18 @@ export function updateBallSelectorUI(mainLevel, balls, giantBalls, gameState) {
     }
 }
 
-export function updateHeaderUI(level, mainLevel, balls, giantBalls, seed, coins, gameState) {
+export function updateHeaderUI(level, mainLevel, balls, giantBalls, seed, coins, gameState, debugStats) {
     dom.levelStatEl.textContent = level;
     dom.ballsStatEl.textContent = balls;
     dom.seedStatEl.textContent = seed;
     dom.coinStatEl.textContent = coins;
     dom.coinBankEl.classList.toggle('hidden', mainLevel < UNLOCK_LEVELS.COINS_SHOP);
+
+    if (state.isDebugView && debugStats) {
+        dom.debugHpStatEl.textContent = `${Math.floor(debugStats.currentHp)} / ${Math.floor(debugStats.hpPoolSpent)} / ${Math.floor(debugStats.hpPool)}`;
+        dom.debugCoinStatEl.textContent = `${Math.floor(debugStats.currentCoins)} / ${Math.floor(debugStats.totalMaxCoins)} / ${Math.floor(debugStats.coinPool)}`;
+    }
+
     updateBallSelectorUI(mainLevel, balls, giantBalls, gameState);
 }
 
@@ -203,13 +208,43 @@ function handleUpgrade(upgradeKey, gameController) {
 export function showLevelUpModal(level) {
     if (!state.p5Instance) return;
     state.p5Instance.isModalOpen = true;
-    if (state.isRunning) state.p5Instance.noLoop();
+    if (state.isRunning) {
+        state.p5Instance.noLoop();
+        state.isRunning = false;
+        dom.pauseResumeBtn.textContent = 'Resume';
+    }
 
     const unlockText = UNLOCK_DESCRIPTIONS[level];
 
     dom.levelUpLevelEl.textContent = level;
     dom.levelUpUnlockTextEl.textContent = unlockText || "More power awaits you in future levels!";
     dom.levelUpModal.classList.remove('hidden');
+}
+
+export function showResultScreen(title, isGameOver = false, stats) {
+    if (!state.p5Instance) return;
+    state.p5Instance.isModalOpen = true;
+    if (state.isRunning) {
+        state.p5Instance.noLoop();
+        state.isRunning = false;
+        dom.pauseResumeBtn.textContent = 'Resume';
+    }
+    
+    dom.resultTitle.textContent = title;
+    dom.resultTitle.classList.toggle('game-over', isGameOver);
+
+    if (stats) {
+        dom.statBallsUsed.textContent = stats.ballsUsed;
+        dom.statDamageDealt.textContent = Math.floor(stats.totalDamage);
+        dom.statBestTurnDamage.textContent = Math.floor(stats.maxDamageInTurn);
+        dom.statCoinsCollected.textContent = stats.coinsCollected;
+        dom.statXpCollected.textContent = Math.floor(stats.xpCollected);
+        dom.resultStatsContainer.classList.remove('hidden');
+    } else {
+        dom.resultStatsContainer.classList.add('hidden');
+    }
+
+    dom.resultScreen.classList.remove('hidden');
 }
 
 export function getLevelSettings() {
@@ -225,17 +260,22 @@ export function getLevelSettings() {
         ballSpeed: parseFloat(dom.ballSpeedInput.value),
         goalBricks: parseInt(dom.goalBricksInput.value, 10),
         goalBrickCountIncrement: parseFloat(dom.goalBrickCountIncrementInput.value),
+        goalBrickCap: parseInt(dom.goalBrickCapInput.value, 10),
+        goalBrickMaxHp: parseInt(dom.goalBrickMaxHpInput.value, 10),
         extraBallBricks: extraBallBricksCount,
         explosiveBrickChance: parseFloat(dom.explosiveBrickChanceInput.value),
+        ballCageBrickChance: parseFloat(dom.ballCageBrickChanceInput.value),
         builderBrickChance: parseFloat(dom.builderBrickChanceInput.value),
         healerBrickChance: parseFloat(dom.healerBrickChanceInput.value),
         brickCount: parseInt(dom.brickCountInput.value, 10),
         brickCountIncrement: parseInt(dom.brickCountIncrementInput.value, 10),
         maxBrickCount: parseInt(dom.maxBrickCountInput.value, 10),
         fewBrickLayoutChance: parseFloat(dom.fewBrickLayoutChanceInput.value),
+        fewBrickLayoutChanceMinLevel: parseInt(dom.fewBrickLayoutChanceMinLevelInput.value, 10),
         startingBrickHp: parseInt(dom.startingBrickHpInput.value, 10),
         brickHpIncrement: parseInt(dom.brickHpIncrementInput.value, 10),
         brickHpIncrementMultiplier: parseFloat(dom.brickHpIncrementMultiplierInput.value),
+        maxBrickHpIncrement: parseInt(dom.maxBrickHpIncrementInput.value, 10),
         startingCoin: parseInt(dom.startingCoinInput.value, 10),
         coinIncrement: parseInt(dom.coinIncrementInput.value, 10),
         maxCoin: parseInt(dom.maxCoinInput.value, 10),
@@ -250,6 +290,9 @@ export function getLevelSettings() {
     }
     if (state.mainLevel < UNLOCK_LEVELS.EXPLOSIVE_BRICK) {
         userSettings.explosiveBrickChance = 0;
+    }
+    if (state.mainLevel < UNLOCK_LEVELS.BALL_CAGE_BRICK) {
+        userSettings.ballCageBrickChance = 0;
     }
     
     return userSettings;

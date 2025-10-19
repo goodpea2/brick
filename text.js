@@ -17,5 +17,6 @@ export const UNLOCK_DESCRIPTIONS = {
     [UNLOCK_LEVELS.BONUS_XP_UPGRADE]: "Shop Upgrade! A new 'Bonus XP' upgrade is now available.",
     [UNLOCK_LEVELS.GIANT_BONUS]: "ULTRA Combo! Very high combos now reward you with a consumable Giant Ball, which destroys everything in its path.",
     [UNLOCK_LEVELS.BULLET_BALL]: "Bullet Ball Unlocked! Click while this ball is moving to fire 4 piercing projectiles.",
+    [UNLOCK_LEVELS.BALL_CAGE_BRICK]: "Ball Cage Bricks! High HP bricks now have a chance to spawn special cages. Break them to release a clone of your ball!",
     [UNLOCK_LEVELS.HOMING_BALL]: "Homing Ball Unlocked! Click while this ball is moving to launch a projectile that seeks Goal bricks.",
 };

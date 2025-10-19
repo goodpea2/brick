@@ -33,6 +33,14 @@ export function initializeInput(gameController, runCode) {
             dom.speedToggleBtn.classList.remove('speed-active'); 
         } 
     });
+    
+    dom.debugViewBtn.addEventListener('click', () => {
+        sounds.buttonClick();
+        state.isDebugView = !state.isDebugView;
+        dom.debugStatsContainer.classList.toggle('hidden', !state.isDebugView);
+        dom.cheatButtonsContainer.classList.toggle('hidden', !state.isDebugView);
+        dom.debugViewBtn.textContent = state.isDebugView ? 'Debug Off' : 'Debug View';
+    });
 
     dom.prevLevelBtn.addEventListener('click', () => { sounds.buttonClick(); gameController.prevLevel(); });
     dom.nextLevelBtn.addEventListener('click', () => { sounds.buttonClick(); gameController.nextLevel(); });
@@ -72,13 +80,38 @@ export function initializeInput(gameController, runCode) {
         dom.shopModal.classList.add('hidden'); 
     });
 
-    dom.levelUpCloseButton.addEventListener('click', () => { 
-        sounds.popupClose(); 
-        dom.levelUpModal.classList.add('hidden'); 
-        if(state.p5Instance) { 
-            state.p5Instance.isModalOpen = false; 
-            if (state.isRunning) state.p5Instance.loop(); 
-        } 
+    dom.levelUpCloseButton.addEventListener('click', () => {
+        sounds.popupClose();
+        dom.levelUpModal.classList.add('hidden');
+        if (state.p5Instance) {
+            state.p5Instance.isModalOpen = false;
+            if (!state.isRunning) {
+                state.p5Instance.loop();
+                state.isRunning = true;
+                dom.pauseResumeBtn.textContent = 'Resume';
+            }
+        }
+    });
+    
+    dom.resultContinueButton.addEventListener('click', () => {
+        sounds.buttonClick();
+        dom.resultScreen.classList.add('hidden');
+    
+        const gameState = gameController.getGameState();
+        if (gameState === 'levelComplete') {
+            gameController.nextLevel();
+        } else if (gameState === 'gameOver') {
+            gameController.resetGame(ui.getLevelSettings());
+        }
+    
+        if (state.p5Instance) {
+            state.p5Instance.isModalOpen = false;
+            if (!state.isRunning) {
+                state.p5Instance.loop();
+                state.isRunning = true;
+                dom.pauseResumeBtn.textContent = 'Pause';
+            }
+        }
     });
 
     dom.shopBalancingButton.addEventListener('click', () => { 
@@ -113,15 +146,18 @@ export function initializeInput(gameController, runCode) {
         ui.updateShopUI(gameController); 
     });
 
-    window.addEventListener('click', (e) => { 
-        if (e.target === dom.settingsModal) { sounds.popupClose(); if (state.p5Instance) state.p5Instance.isModalOpen = false; dom.settingsModal.classList.add('hidden'); } 
-        if (e.target === dom.shopModal) { sounds.popupClose(); if (state.p5Instance) state.p5Instance.isModalOpen = false; dom.shopModal.classList.add('hidden'); } 
-        if (e.target === dom.shopBalancingModal) { sounds.popupClose(); dom.shopBalancingModal.classList.add('hidden'); } 
+    window.addEventListener('click', (e) => {
+        if (e.target === dom.settingsModal) { sounds.popupClose(); if (state.p5Instance) state.p5Instance.isModalOpen = false; dom.settingsModal.classList.add('hidden'); }
+        if (e.target === dom.shopModal) { sounds.popupClose(); if (state.p5Instance) state.p5Instance.isModalOpen = false; dom.shopModal.classList.add('hidden'); }
+        if (e.target === dom.shopBalancingModal) { sounds.popupClose(); dom.shopBalancingModal.classList.add('hidden'); }
+        if (e.target === dom.levelUpModal) { dom.levelUpCloseButton.click(); }
+        if (e.target === dom.resultScreen) { dom.resultContinueButton.click(); }
     });
 
     dom.ballSpeedInput.addEventListener('input', () => dom.ballSpeedValue.textContent = parseFloat(dom.ballSpeedInput.value).toFixed(1));
     dom.volumeSlider.addEventListener('input', () => { const vol = parseFloat(dom.volumeSlider.value); sounds.setMasterVolume(vol); dom.volumeValue.textContent = vol.toFixed(2); });
     dom.explosiveBrickChanceInput.addEventListener('input', () => dom.explosiveBrickChanceValue.textContent = parseFloat(dom.explosiveBrickChanceInput.value).toFixed(2));
+    dom.ballCageBrickChanceInput.addEventListener('input', () => dom.ballCageBrickChanceValue.textContent = parseFloat(dom.ballCageBrickChanceInput.value).toFixed(2));
     dom.fewBrickLayoutChanceInput.addEventListener('input', () => dom.fewBrickLayoutChanceValue.textContent = parseFloat(dom.fewBrickLayoutChanceInput.value).toFixed(2));
     
     dom.generateLevelBtn.addEventListener('click', () => { 
@@ -161,6 +197,32 @@ export function initializeInput(gameController, runCode) {
             ui.updateProgressionUI(state.mainLevel, state.currentXp, state.xpForNextLevel, 0);
         }
     });
+    
+    dom.cheatLevelBtn.addEventListener('click', () => {
+        sounds.buttonClick();
+        if (gameController) {
+            state.mainLevel += 10;
+            state.xpForNextLevel = XP_SETTINGS.xpBaseAmount * state.mainLevel * (state.mainLevel + 1) / 2;
+            state.currentXp = 0;
+            ui.updateProgressionUI(state.mainLevel, state.currentXp, state.xpForNextLevel, 0);
+            sounds.levelUp();
+        }
+    });
+
+    dom.cheatGiantBallBtn.addEventListener('click', () => {
+        sounds.buttonClick();
+        if (gameController) {
+            gameController.addGiantBall();
+        }
+    });
+
+    dom.cheatEndTurnBtn.addEventListener('click', () => {
+        sounds.buttonClick();
+        if (gameController) {
+            gameController.forceEndTurn();
+        }
+    });
+
 
     document.querySelectorAll('.ball-select-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
