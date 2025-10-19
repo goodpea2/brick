@@ -187,9 +187,17 @@ export function generateLevel(p, settings, level, board) {
         brickToBuff.maxHealth += hpToAdd;
     }
     
+    // Place +1 Ball bricks. These are guaranteed and do not count towards brickCountTarget.
+    for (let i = 0; i < settings.extraBallBricks; i++) {
+        const spot = takeNextAvailableCoord();
+        if (spot) {
+            brickMatrix[spot.c][spot.r] = new Brick(p, spot.c - 6, spot.r - 6, 'extraBall', 10, gridUnitSize);
+        }
+    }
+
     // --- Step 4: Place Normal Bricks based on Pattern ---
     // Fill the grid with the target number of normal bricks using the selected layout pattern (e.g., formulaic, solid).
-    // Some of these may be designated as special types like '+1 Ball' or 'Explosive' bricks.
+    // Some of these may be designated as special types like 'Explosive' bricks.
     // Each brick is created with a base health of 10 HP.
     let normalBrickCoords = [];
     if (settings.levelPattern === 'formulaic') {
@@ -221,16 +229,12 @@ export function generateLevel(p, settings, level, board) {
          }
     }
 
-    let extraBallBricksPlaced = 0;
     let hpPlacedSoFar = 0;
     normalBrickCoords.forEach(spot => {
         if((hpPlacedSoFar + 10) <= currentBrickHpPool) {
             let type = 'normal';
             if (p.random() < settings.explosiveBrickChance) {
                 type = 'explosive';
-            } else if (extraBallBricksPlaced < settings.extraBallBricks) {
-                type = 'extraBall';
-                extraBallBricksPlaced++;
             }
             const newBrick = new Brick(p, spot.c - 6, spot.r - 6, type, 10, gridUnitSize);
             brickMatrix[spot.c][spot.r] = newBrick;
